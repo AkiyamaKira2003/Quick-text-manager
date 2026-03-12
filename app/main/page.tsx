@@ -165,7 +165,19 @@ export default function MainPage() {
     ? t(language, 'main.toggleAppOff', { hotkey: appToggleCombo })
     : t(language, 'main.toggleAppOn', { hotkey: appToggleCombo })
 
-  if (!settings) return null
+  if (!settings) {
+    return (
+      <ProfilingShell>
+        <div className="h-dvh w-full overflow-hidden bg-transparent p-2 text-foreground">
+          <main className="qt-shell qt-window-shell relative flex h-full min-h-0 w-full flex-col gap-3 rounded-[22px] p-3 sm:p-4">
+            <section className="rounded-3xl border border-[var(--qt-border)] bg-[color-mix(in_oklab,var(--qt-surface)_82%,transparent)] p-5 text-sm text-[var(--qt-muted)]">
+              Đang nạp cài đặt QuickText... Nếu là lần chạy đầu, app có thể cần thêm vài giây để chuẩn bị dữ liệu.
+            </section>
+          </main>
+        </div>
+      </ProfilingShell>
+    )
+  }
 
   return (
     <ProfilingShell>

@@ -6,6 +6,7 @@ import type { Settings } from '@/types'
 
 const WEB_SETTINGS_STORAGE_KEY = 'quicktext.settings.v3'
 const SETTINGS_SAVE_DEBOUNCE_MS = 140
+const SETTINGS_IPC_LOAD_TIMEOUT_MS = 2500
 const MODE_LIST = ['dark', 'light'] as const
 const PALETTE_LIST = ['icon', 'jade', 'crimson', 'dark', 'light'] as const
 
@@ -91,7 +92,7 @@ export function useSettings() {
 
       if (window.electronAPI?.getSettings) {
         try {
-          const loaded = await window.electronAPI.getSettings()
+          const loaded = await withTimeout(window.electronAPI.getSettings(), SETTINGS_IPC_LOAD_TIMEOUT_MS, 'getSettings timeout')
           const normalized = normalizeSettings(loaded)
           if (!mounted) return
           settingsRef.current = normalized
@@ -226,4 +227,22 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(message))
+    }, Math.max(300, Math.floor(timeoutMs)))
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 }
