@@ -22,17 +22,11 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup pnpm
-        shell: pwsh
-        run: |
-          corepack enable
-          pnpm --version
-
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm install
 
       - name: Build Windows unpacked app
-        run: pnpm run dist:folder
+        run: npm run dist:folder
 
       - name: Build launcher zip + latest.json
         shell: pwsh
