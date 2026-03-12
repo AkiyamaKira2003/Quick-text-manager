@@ -7,9 +7,11 @@ import { useSettings } from '@/hooks/use-settings'
 import { t } from '@/lib/i18n'
 import type { HotkeyErrorSource, PythonConfigurePayload, PythonEventsResult, PythonInputEvent, Settings } from '@/types'
 
-const SEND_ENDPOINT = '/api/send'
-const INPUT_EVENTS_ENDPOINT = '/api/input-events'
-const PYTHON_CONFIG_ENDPOINT = '/api/python-config'
+const API_ENDPOINTS = {
+  send: '/api/send',
+  inputEvents: '/api/input-events',
+  pythonConfig: '/api/python-config',
+} as const
 const MIN_OFFSET_X_PERCENT = -70
 const MAX_OFFSET_X_PERCENT = 70
 const MIN_OFFSET_Y_PERCENT = -45
@@ -414,7 +416,7 @@ function OverlayPageComponent() {
           throw new Error(result.error || `Send failed (${result.status})`)
         }
       } else {
-        const response = await fetch(SEND_ENDPOINT, {
+        const response = await fetch(API_ENDPOINTS.send, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: item.text }),
@@ -499,17 +501,26 @@ function OverlayPageComponent() {
       }
 
       if (actionId === 'app.toggle_enabled') {
-        if (!current || !current.appEnabled) return
+        if (!current) return
+        const nextEnabled = !current.appEnabled
         showActionFeedback('optimistic', t(language, 'overlay.toggleAppQueued'))
-        void updateSettings({
-          appEnabled: false,
-          overlayVisible: false,
-          overlayInteractive: false,
-        })
+        void updateSettings(
+          nextEnabled
+            ? {
+                appEnabled: true,
+                overlayVisible: true,
+                overlayInteractive: false,
+              }
+            : {
+                appEnabled: false,
+                overlayVisible: false,
+                overlayInteractive: false,
+              },
+        )
         showActionFeedback(
           'success',
           t(language, 'overlay.toggleAppSuccess', {
-            state: t(language, 'main.appStateOff'),
+            state: t(language, nextEnabled ? 'main.appStateOn' : 'main.appStateOff'),
           }),
         )
         return
@@ -655,7 +666,7 @@ function OverlayPageComponent() {
             return
           }
 
-          const response = await fetch(PYTHON_CONFIG_ENDPOINT, {
+          const response = await fetch(API_ENDPOINTS.pythonConfig, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -889,11 +900,6 @@ function OverlayPageComponent() {
         return
       }
 
-      if (settingsRef.current?.appEnabled === false) {
-        scheduleNext(INPUT_POLL_APP_OFF_MS)
-        return
-      }
-
       pollingRef.current = true
 
       let sawInput = false
@@ -906,7 +912,7 @@ function OverlayPageComponent() {
           payload = await window.electronAPI.pythonGetInputEvents(after)
         } else {
           activeRequest = new AbortController()
-          const response = await fetch(`${INPUT_EVENTS_ENDPOINT}?after=${after}`, {
+          const response = await fetch(`${API_ENDPOINTS.inputEvents}?after=${after}`, {
             method: 'GET',
             cache: 'no-store',
             signal: activeRequest.signal,
@@ -1921,11 +1927,34 @@ function localizeOverlayError(language: 'vi' | 'en', message: string) {
   if (!normalized) return fallback
   if (language === 'en') return normalized
 
-  if (normalized.startsWith('Send failed')) return fallback
-  if (normalized.includes('Python service timeout')) return 'Python service phan hoi qua cham.'
-  if (normalized.includes('Python service unavailable')) return 'Khong ket noi duoc Python service.'
-  if (normalized.includes('`text` is required')) return 'Thieu noi dung text can gui.'
-  return normalized
+  const detail = normalized.replace(/^Send failed[:\s-]*/i, '').trim() || normalized
+
+  if (detail.includes('Python service timeout')) {
+    return `Python service phản hồi quá chậm. Chi tiết: ${detail}`
+  }
+  if (detail.includes('Python service unavailable')) {
+    return `Không kết nối được Python service. Chi tiết: ${detail}`
+  }
+  if (detail.includes('Invalid PYTHON_API_BASE_URL')) {
+    return `Cấu hình đường dẫn Python API không hợp lệ. Chi tiết: ${detail}`
+  }
+  if (detail.includes('`text` is required')) {
+    return `Thiếu nội dung text cần gửi. Chi tiết: ${detail}`
+  }
+  if (detail.includes('Payload must be a JSON object')) {
+    return `Dữ liệu gửi lên không đúng định dạng JSON object. Chi tiết: ${detail}`
+  }
+  if (detail.includes('Invalid JSON payload')) {
+    return `Payload JSON không hợp lệ. Chi tiết: ${detail}`
+  }
+  if (detail.includes('Python service error')) {
+    return `Python service trả lỗi. Chi tiết: ${detail}`
+  }
+  if (detail.includes('`delay_range`')) {
+    return `Giá trị delay_range không hợp lệ. Chi tiết: ${detail}`
+  }
+
+  return `Lỗi gửi câu. Chi tiết: ${detail}`
 }
 
 function localizeOverlayActionError(language: 'vi' | 'en', message: string) {
@@ -1934,7 +1963,17 @@ function localizeOverlayActionError(language: 'vi' | 'en', message: string) {
   if (!normalized) return fallback
   if (language === 'en') return normalized
 
-  if (normalized.includes('unavailable')) return fallback
-  if (normalized.includes('failed')) return fallback
-  return normalized
+  const detail = normalized.replace(/^Action failed[:\s-]*/i, '').trim() || normalized
+
+  if (detail.includes('unavailable')) {
+    return `Tác vụ thất bại do dịch vụ chưa sẵn sàng. Chi tiết: ${detail}`
+  }
+  if (detail.includes('timeout')) {
+    return `Tác vụ bị quá thời gian chờ. Chi tiết: ${detail}`
+  }
+  if (detail.includes('failed')) {
+    return `Tác vụ thất bại. Chi tiết: ${detail}`
+  }
+
+  return `Lỗi tác vụ overlay. Chi tiết: ${detail}`
 }

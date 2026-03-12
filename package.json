@@ -1,6 +1,6 @@
 {
   "name": "quicktext",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Kira",
   "private": true,
   "main": "electron/main.js",
@@ -23,12 +23,13 @@
     "qa:prod": "npm run build && npm run run:local",
     "build:standalone": "node scripts/prepare-standalone.cjs",
     "build:win-icon": "node scripts/prepare-win-icon.cjs",
+    "build:python-service": "node scripts/build-python-service.mjs",
     "release:launcher:manifest": "node scripts/generate-launcher-manifest.mjs",
     "release:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1",
     "release:launcher:exe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-exe.ps1",
     "test:prod": "npm run build && npm run run:local",
-    "dist:win": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && electron-builder --win nsis",
-    "dist:folder": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && electron-builder --win dir",
+    "dist:win": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:python-service && electron-builder --win nsis",
+    "dist:folder": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:python-service && electron-builder --win dir",
     "start": "next start",
     "lint": "eslint ."
   },
@@ -54,6 +55,13 @@
         "to": ".next-build/standalone-runtime",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "build/python",
+        "to": "python",
+        "filter": [
+          "QuickTextPython.exe"
         ]
       }
     ],

@@ -224,7 +224,7 @@ def trigger_configured_send() -> None:
     start_async_send(text, delay_range, press_enter)
 
 
-def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any) -> tuple[bool, str]:
+def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any, suppress: bool = True) -> tuple[bool, str]:
     if keyboard_lib is None:
         message = "keyboard module unavailable"
         if KEYBOARD_IMPORT_ERROR:
@@ -245,11 +245,11 @@ def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any) -> tupl
             handle = keyboard_lib.add_hotkey(
                 hotkey,
                 callback,
-                trigger_on_release=False,
-                suppress=True,
+                trigger_on_release=True,
+                suppress=suppress,
             )
         except TypeError:
-            handle = keyboard_lib.add_hotkey(hotkey, callback, trigger_on_release=False)
+            handle = keyboard_lib.add_hotkey(hotkey, callback, trigger_on_release=True)
         except Exception as exc:  # pragma: no cover - runtime environment dependent
             return False, str(exc)
 
@@ -289,7 +289,7 @@ def register_send_hotkey(hotkey: str) -> tuple[bool, str]:
 
 
 def register_app_toggle_hotkey(hotkey: str) -> tuple[bool, str]:
-    ok, error = register_action_hotkey(ACTION_APP_TOGGLE, hotkey)
+    ok, error = register_action_hotkey(ACTION_APP_TOGGLE, hotkey, suppress=False)
     if not ok:
         message = f"{ACTION_APP_TOGGLE} hotkey register failed: {error}"
         set_last_error(message)
@@ -305,14 +305,12 @@ def register_app_toggle_hotkey(hotkey: str) -> tuple[bool, str]:
     return True, ""
 
 
-def disable_runtime_hotkeys() -> None:
+def disable_non_toggle_runtime_hotkeys() -> None:
     unregister_hotkey_binding("text.send_current")
-    unregister_hotkey_binding(ACTION_APP_TOGGLE)
     unregister_hotkey_binding(ACTION_OVERLAY_TOGGLE)
     unregister_hotkey_binding(ACTION_MAIN_TOGGLE)
     unregister_hotkey_binding(ACTION_OVERLAY_EDIT)
     with state_lock:
-        runtime_state["app_toggle_registered"] = False
         runtime_state["send_hotkey_registered"] = False
         runtime_state["overlay_toggle_registered"] = False
         runtime_state["main_toggle_registered"] = False
@@ -322,12 +320,39 @@ def disable_runtime_hotkeys() -> None:
 def trigger_action_hotkey(action_id: str) -> None:
     if action_id == ACTION_APP_TOGGLE:
         with state_lock:
-            if not bool(runtime_state.get("app_enabled", True)):
-                return
-            runtime_state["app_enabled"] = False
-            send_config["app_enabled"] = False
+            last_map = runtime_state.get("last_action_trigger_at")
+            if not isinstance(last_map, dict):
+                last_map = {}
+                runtime_state["last_action_trigger_at"] = last_map
 
-        disable_runtime_hotkeys()
+            last_trigger = float(last_map.get(action_id, 0.0))
+            now = time.monotonic()
+            if now - last_trigger < DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS / 1000:
+                return
+            last_map[action_id] = now
+
+            next_enabled = not bool(runtime_state.get("app_enabled", True))
+            runtime_state["app_enabled"] = next_enabled
+            send_config["app_enabled"] = next_enabled
+            send_hotkey = str(send_config.get("send_hotkey", DEFAULT_SEND_HOTKEY))
+            overlay_toggle_hotkey = str(send_config.get("overlay_toggle_hotkey", DEFAULT_OVERLAY_TOGGLE_HOTKEY))
+            main_toggle_hotkey = str(send_config.get("main_toggle_hotkey", DEFAULT_MAIN_TOGGLE_HOTKEY))
+            overlay_edit_hotkey = str(send_config.get("overlay_edit_hotkey", DEFAULT_OVERLAY_EDIT_HOTKEY))
+
+        if next_enabled:
+            ok, message = register_send_hotkey(send_hotkey)
+            if not ok:
+                set_last_error(message)
+            ok, message = register_overlay_mode_hotkeys(
+                overlay_toggle_hotkey,
+                main_toggle_hotkey,
+                overlay_edit_hotkey,
+            )
+            if not ok:
+                set_last_error(message)
+        else:
+            disable_non_toggle_runtime_hotkeys()
+
         add_event("action", action=action_id)
         return
 
@@ -348,11 +373,11 @@ def trigger_action_hotkey(action_id: str) -> None:
     add_event("action", action=action_id)
 
 
-def register_action_hotkey(action_id: str, hotkey: str) -> tuple[bool, str]:
+def register_action_hotkey(action_id: str, hotkey: str, suppress: bool = True) -> tuple[bool, str]:
     def callback() -> None:
         trigger_action_hotkey(action_id)
 
-    ok, error = register_hotkey_binding(action_id, hotkey, callback)
+    ok, error = register_hotkey_binding(action_id, hotkey, callback, suppress=suppress)
     if not ok:
         message = f"{action_id} hotkey register failed: {error}"
         set_last_error(message)
@@ -503,7 +528,7 @@ def configure():
 
     with state_lock:
         app_enabled_now = bool(next_app_enabled)
-        need_register_app_toggle = app_enabled_now and bool(
+        need_register_app_toggle = bool(
             "app_toggle_hotkey" in data
             or "app_enabled" in data
             or not runtime_state["app_toggle_registered"]
@@ -522,9 +547,8 @@ def configure():
             or not runtime_state["main_toggle_registered"]
             or not runtime_state["overlay_edit_registered"]
         )
-        need_disable_runtime_hotkeys = (not app_enabled_now) and bool(
+        need_disable_non_toggle_hotkeys = (not app_enabled_now) and bool(
             "app_enabled" in data
-            or runtime_state["app_toggle_registered"]
             or runtime_state["send_hotkey_registered"]
             or runtime_state["overlay_toggle_registered"]
             or runtime_state["main_toggle_registered"]
@@ -536,8 +560,8 @@ def configure():
         if not ok:
             return jsonify({"ok": False, "error": message}), 500
 
-    if need_disable_runtime_hotkeys:
-        disable_runtime_hotkeys()
+    if need_disable_non_toggle_hotkeys:
+        disable_non_toggle_runtime_hotkeys()
 
     if need_register_send:
         ok, message = register_send_hotkey(next_hotkey)

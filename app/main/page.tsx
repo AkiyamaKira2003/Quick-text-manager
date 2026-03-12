@@ -6,7 +6,8 @@ import dynamic from 'next/dynamic'
 import { useSettings } from '@/hooks/use-settings'
 import { formatComboForDisplay, getEffectiveHotkeyBindings, isHotkeyActionActive } from '@/lib/hotkeys'
 import { t, type MessageKey } from '@/lib/i18n'
-import type { HotkeyActionId, ProfilingRuntimeState, TelemetrySnapshot } from '@/types'
+import { formatUpdateStatusLabel, shouldShowInAppUpdateNotice } from '@/lib/update-status'
+import type { AppUpdateState, HotkeyActionId, ProfilingRuntimeState, TelemetrySnapshot } from '@/types'
 import { Minus, Power, Settings2, X } from 'lucide-react'
 import ProfilingShell from '@/components/ProfilingShell'
 
@@ -39,6 +40,9 @@ export default function MainPage() {
   const { settings, updateSettings } = useSettings()
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null)
   const [profiling, setProfiling] = useState<ProfilingRuntimeState | null>(null)
+  const [updateState, setUpdateState] = useState<AppUpdateState | null>(null)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const hasNotifiedMainReadyRef = useRef(false)
 
   const closeApp = useCallback(() => {
@@ -61,6 +65,33 @@ export default function MainPage() {
       return
     }
     window.location.href = '/settings'
+  }, [])
+
+  const checkForUpdates = useCallback(async () => {
+    if (!window.electronAPI?.checkForUpdates) return
+    setIsCheckingUpdate(true)
+    try {
+      const state = await window.electronAPI.checkForUpdates()
+      setUpdateState(state)
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }, [])
+
+  const installUpdateNow = useCallback(async () => {
+    if (!window.electronAPI?.installUpdateNow) return
+    setIsInstallingUpdate(true)
+    try {
+      const result = await window.electronAPI.installUpdateNow()
+      if (result?.state) {
+        setUpdateState(result.state)
+      }
+      if (!result?.ok) {
+        setIsInstallingUpdate(false)
+      }
+    } catch {
+      setIsInstallingUpdate(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -126,6 +157,36 @@ export default function MainPage() {
   }, [])
 
   useEffect(() => {
+    let mounted = true
+
+    if (window.electronAPI?.getUpdateState) {
+      void window.electronAPI
+        .getUpdateState()
+        .then((state) => {
+          if (!mounted) return
+          setUpdateState(state)
+        })
+        .catch(() => undefined)
+    }
+
+    if (!window.electronAPI?.onUpdateState) {
+      return () => {
+        mounted = false
+      }
+    }
+
+    const unsubscribe = window.electronAPI.onUpdateState((state) => {
+      if (!mounted) return
+      setUpdateState(state)
+    })
+
+    return () => {
+      mounted = false
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     document.body.style.backgroundColor = 'transparent'
     document.documentElement.style.backgroundColor = 'transparent'
     return () => {
@@ -181,6 +242,27 @@ export default function MainPage() {
   const appToggleLabel = settings?.appEnabled
     ? t(language, 'main.toggleAppOff', { hotkey: appToggleCombo })
     : t(language, 'main.toggleAppOn', { hotkey: appToggleCombo })
+  const updateStatusLabel = formatUpdateStatusLabel(language, updateState)
+  const updateCurrentVersionLabel = updateState?.currentVersion ? `v${updateState.currentVersion}` : '-'
+  const updateAvailableVersionLabel = updateState?.availableVersion || updateState?.downloadedVersion || ''
+  const showUpdateNotice = shouldShowInAppUpdateNotice(updateState)
+  const canUseUpdateCheck = typeof window !== 'undefined' && typeof window.electronAPI?.checkForUpdates === 'function'
+  const canInstallUpdate = !!updateState && updateState.stage === 'downloaded' && !isInstallingUpdate
+  const disableCheckUpdateButton =
+    !canUseUpdateCheck ||
+    isCheckingUpdate ||
+    isInstallingUpdate ||
+    updateState?.stage === 'checking' ||
+    updateState?.stage === 'downloading' ||
+    updateState?.stage === 'installing'
+  const updateNoticeToneClass =
+    updateState?.stage === 'downloaded'
+      ? 'border-emerald-400/55 bg-emerald-400/12'
+      : updateState?.stage === 'error'
+        ? 'border-rose-400/55 bg-rose-400/12'
+        : updateState?.stage === 'installing'
+          ? 'border-amber-400/55 bg-amber-400/12'
+          : 'border-cyan-400/55 bg-cyan-400/12'
 
   if (!settings) {
     return (
@@ -322,7 +404,50 @@ export default function MainPage() {
                     {t(language, 'main.profilingStatusLabel')}: {profilingStatus} ({profilingSummary})
                   </span>
                 </div>
-
+                {showUpdateNotice ? (
+                  <div className={`w-full max-w-[44rem] rounded-2xl border p-3 qt-elev-soft ${updateNoticeToneClass}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--qt-muted)]">{t(language, 'settings.updateTitle')}</p>
+                        <p className="mt-0.5 text-sm font-semibold text-[var(--qt-fg)]">{updateStatusLabel}</p>
+                        <p className="mt-1 text-xs text-[var(--qt-muted)]">
+                          {t(language, 'settings.updateCurrentVersion', { version: updateCurrentVersionLabel })}
+                        </p>
+                        {updateAvailableVersionLabel ? (
+                          <p className="text-xs text-[var(--qt-muted)]">
+                            {t(language, 'settings.updateAvailableVersion', { version: `v${updateAvailableVersionLabel}` })}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => void checkForUpdates()}
+                          disabled={disableCheckUpdateButton}
+                          className={`inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold transition ${
+                            disableCheckUpdateButton
+                              ? 'cursor-not-allowed border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-muted)]'
+                              : 'border-[var(--qt-primary)] bg-[var(--qt-primary)]/18 text-[var(--qt-fg)] hover:bg-[var(--qt-primary)]/28'
+                          }`}
+                        >
+                          {isCheckingUpdate || updateState?.stage === 'checking'
+                            ? t(language, 'settings.updateChecking')
+                            : t(language, 'settings.updateCheck')}
+                        </button>
+                        <button
+                          onClick={() => void installUpdateNow()}
+                          disabled={!canInstallUpdate}
+                          className={`inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold transition ${
+                            canInstallUpdate
+                              ? 'border-emerald-400/70 bg-emerald-400/20 text-emerald-100 hover:bg-emerald-400/30'
+                              : 'cursor-not-allowed border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-muted)]'
+                          }`}
+                        >
+                          {isInstallingUpdate ? t(language, 'settings.updateInstalling') : t(language, 'settings.updateInstall')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </header>

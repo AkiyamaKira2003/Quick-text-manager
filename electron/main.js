@@ -99,6 +99,7 @@ const STARTUP_SPLASH_LABELS = {
   },
 }
 const DEFAULT_PYTHON_API_BASE_URL = 'http://127.0.0.1:5000'
+const DEFAULT_PYTHON_SERVICE_EXE_NAME = 'QuickTextPython.exe'
 const OVERLAY_TOGGLE_HOTKEY = 'Ctrl+Shift+1'
 const DEFAULT_OVERLAY_EDIT_HOTKEY = 'Tab'
 const DEFAULT_SEND_HOTKEY = '4'
@@ -123,6 +124,7 @@ const TELEMETRY_WRITE_DEBOUNCE_MS = 220
 const TRAY_MENU_REFRESH_DEBOUNCE_MS = 90
 const OVERLAY_REFIT_DEBOUNCE_MS = 220
 const OVERLAY_DEFER_BOOT_MS = 260
+const ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS = 280
 const STARTUP_PHASE_LOG_ENABLED = parseBooleanEnv('QT_STARTUP_PHASE_LOG', false)
 const OVERLAY_LIFECYCLE_LOG_ENABLED = parseBooleanEnv('QT_OVERLAY_LIFECYCLE_LOG', false)
 const SKIP_ADMIN_CHECK = parseBooleanEnv('QT_SKIP_ADMIN_CHECK', false)
@@ -315,6 +317,7 @@ let lastSettingsWriteError = null
 let quittingAfterSettingsFlush = false
 let hotkeySignature = ''
 let electronHotkeyRegistrations = []
+let electronHotkeyLastTriggeredAt = new Map()
 let overlayMousePassThrough = true
 let overlayBoundsSignature = ''
 let telemetryWritePromise = Promise.resolve()
@@ -2704,7 +2707,7 @@ function isLocalPythonBaseUrl() {
 function getPythonServiceUnavailableMessage() {
   const reason = managedPythonLastError.trim()
   if (!reason) {
-    return 'Python service unavailable. Ensure Python 3 is installed and `python/tool.py` can run.'
+    return 'Python service unavailable. Ensure bundled QuickTextPython.exe exists or Python 3 can run `python/tool.py`.'
   }
   return `Python service unavailable. ${reason}`
 }
@@ -2755,30 +2758,69 @@ function resolvePythonToolScriptPath() {
   return ''
 }
 
-function getPythonLaunchPlans(scriptPath) {
+function resolveBundledPythonServiceExePath() {
+  const explicitExe = String(process.env.QT_PYTHON_SERVICE_EXE || '').trim()
+  const exeName = String(process.env.QT_PYTHON_SERVICE_EXE_NAME || DEFAULT_PYTHON_SERVICE_EXE_NAME).trim() || DEFAULT_PYTHON_SERVICE_EXE_NAME
+  const candidates = []
+  if (explicitExe) {
+    candidates.push(path.resolve(explicitExe))
+  }
+  candidates.push(
+    path.resolve(process.cwd(), 'build', 'python', exeName),
+    path.resolve(process.cwd(), 'python', exeName),
+    path.resolve(process.resourcesPath || '', 'python', exeName),
+    path.resolve(process.resourcesPath || '', 'app.asar.unpacked', 'python', exeName),
+  )
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    try {
+      if (fs.existsSync(candidate)) return candidate
+    } catch {
+      // Ignore invalid candidate and continue searching.
+    }
+  }
+  return ''
+}
+
+function getPythonLaunchPlans(scriptPath, bundledExePath = '') {
   const plans = []
+  if (bundledExePath) {
+    plans.push({
+      command: bundledExePath,
+      args: [],
+      label: `bundled (${path.basename(bundledExePath)})`,
+      cwd: path.dirname(bundledExePath),
+    })
+  }
+
+  if (!scriptPath) {
+    return plans
+  }
+
   const explicitBinary = String(process.env.QT_PYTHON_BIN || '').trim()
   if (explicitBinary) {
     plans.push({
       command: explicitBinary,
       args: [scriptPath],
       label: explicitBinary,
+      cwd: path.dirname(scriptPath),
     })
   }
 
   if (process.platform === 'win32') {
     plans.push(
-      { command: 'py', args: ['-3', scriptPath], label: 'py -3' },
-      { command: 'py', args: [scriptPath], label: 'py' },
-      { command: 'python', args: [scriptPath], label: 'python' },
-      { command: 'python3', args: [scriptPath], label: 'python3' },
+      { command: 'py', args: ['-3', scriptPath], label: 'py -3', cwd: path.dirname(scriptPath) },
+      { command: 'py', args: [scriptPath], label: 'py', cwd: path.dirname(scriptPath) },
+      { command: 'python', args: [scriptPath], label: 'python', cwd: path.dirname(scriptPath) },
+      { command: 'python3', args: [scriptPath], label: 'python3', cwd: path.dirname(scriptPath) },
     )
     return plans
   }
 
   plans.push(
-    { command: 'python3', args: [scriptPath], label: 'python3' },
-    { command: 'python', args: [scriptPath], label: 'python' },
+    { command: 'python3', args: [scriptPath], label: 'python3', cwd: path.dirname(scriptPath) },
+    { command: 'python', args: [scriptPath], label: 'python', cwd: path.dirname(scriptPath) },
   )
   return plans
 }
@@ -2858,13 +2900,14 @@ async function startManagedPythonService() {
     return false
   }
 
+  const bundledExePath = resolveBundledPythonServiceExePath()
   const scriptPath = resolvePythonToolScriptPath()
-  if (!scriptPath) {
-    managedPythonLastError = 'Cannot find `python/tool.py` for auto-start.'
+  if (!bundledExePath && !scriptPath) {
+    managedPythonLastError = 'Cannot find bundled Python service executable or `python/tool.py` for auto-start.'
     return false
   }
 
-  const launchPlans = getPythonLaunchPlans(scriptPath)
+  const launchPlans = getPythonLaunchPlans(scriptPath, bundledExePath)
   if (!launchPlans.length) {
     managedPythonLastError = 'No Python launcher candidates configured.'
     return false
@@ -2873,7 +2916,7 @@ async function startManagedPythonService() {
   for (const plan of launchPlans) {
     const spawnErrorRef = { error: null }
     const child = spawn(plan.command, plan.args, {
-      cwd: path.dirname(scriptPath),
+      cwd: plan.cwd || process.cwd(),
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
@@ -3966,7 +4009,10 @@ function shouldUseElectronHotkeyFallback() {
 }
 
 function unregisterElectronHotkeys() {
-  if (!electronHotkeyRegistrations.length) return
+  if (!electronHotkeyRegistrations.length) {
+    electronHotkeyLastTriggeredAt.clear()
+    return
+  }
   for (const combo of electronHotkeyRegistrations) {
     try {
       globalShortcut.unregister(combo)
@@ -3975,20 +4021,44 @@ function unregisterElectronHotkeys() {
     }
   }
   electronHotkeyRegistrations = []
+  electronHotkeyLastTriggeredAt.clear()
+}
+
+function shouldSuppressElectronHotkeyAction(actionId) {
+  const now = Date.now()
+  const key = String(actionId || '').trim() || 'unknown'
+  const lastAt = Number(electronHotkeyLastTriggeredAt.get(key) || 0)
+  if (now - lastAt < ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS) {
+    return true
+  }
+  electronHotkeyLastTriggeredAt.set(key, now)
+  return false
 }
 
 function applyAppToggleHotkeyAction() {
   const settings = ensureSettings()
-  if (!settings.appEnabled) return
-  settings.appEnabled = false
-  settings.overlayVisible = false
+  const nextEnabled = !settings.appEnabled
+  settings.appEnabled = nextEnabled
   settings.overlayInteractive = false
-  overlayMousePassThrough = true
+  settings.overlayVisible = nextEnabled
+
+  if (!nextEnabled) {
+    overlayMousePassThrough = true
+  }
+
   void saveSettings(settings)
+
+  if (nextEnabled) {
+    ensureOverlayWindowForCurrentSettings()
+  }
+
   applySettingsToWindows(settings)
-  clearOverlayBootTimer()
-  applyOverlayVisibility(false)
-  maybeTearDownOverlayWindow(settings)
+  if (!nextEnabled) {
+    clearOverlayBootTimer()
+    applyOverlayVisibility(false)
+    maybeTearDownOverlayWindow(settings)
+  }
+  ensureHotkeys(settings)
   broadcastSettings()
   refreshTrayMenu()
 }
@@ -4000,6 +4070,7 @@ function triggerSendHotkeyAction() {
 }
 
 function handleElectronHotkeyAction(actionId) {
+  if (shouldSuppressElectronHotkeyAction(actionId)) return
   try {
     if (actionId === 'app.toggle_enabled') {
       applyAppToggleHotkeyAction()
@@ -4051,13 +4122,16 @@ function syncElectronHotkeys(settings) {
 
   unregisterElectronHotkeys()
 
-  const registrationPlan = [
-    ['app.toggle_enabled', settings.appToggleHotkey],
-    ['overlay.toggle_visibility', settings.overlayToggleHotkey],
-    ['main.toggle_visibility', settings.mainToggleHotkey],
-    ['overlay.toggle_interaction', settings.overlayEditHotkey],
-    ['text.send_current', settings.sendHotkey],
-  ]
+  const registrationPlan =
+    settings.appEnabled === false
+      ? [['app.toggle_enabled', settings.appToggleHotkey]]
+      : [
+          ['app.toggle_enabled', settings.appToggleHotkey],
+          ['overlay.toggle_visibility', settings.overlayToggleHotkey],
+          ['main.toggle_visibility', settings.mainToggleHotkey],
+          ['overlay.toggle_interaction', settings.overlayEditHotkey],
+          ['text.send_current', settings.sendHotkey],
+        ]
 
   for (const [actionId, combo] of registrationPlan) {
     registerElectronHotkey(combo, actionId)
@@ -4065,7 +4139,7 @@ function syncElectronHotkeys(settings) {
 }
 
 function ensureHotkeys(settings) {
-  const nextSignature = `${settings.appToggleHotkey}|${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
+  const nextSignature = `${settings.appEnabled ? '1' : '0'}|${settings.appToggleHotkey}|${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
   if (nextSignature === hotkeySignature) {
     if (electronHotkeyRegistrations.length === 0 && shouldUseElectronHotkeyFallback()) {
       syncElectronHotkeys(settings)
