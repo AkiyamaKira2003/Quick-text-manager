@@ -1,113 +1,66 @@
-# QuickText
+<p align="center">
+  <img src="public/logo.jpg" alt="QuickText Logo" width="920" />
+</p>
 
-QuickText is a desktop overlay + text manager for fast in-game chat macros.
+<p align="center">
+  <img src="public/icon.png" alt="QuickText Icon" width="96" />
+</p>
 
-## Highlights
+<h1 align="center">QuickText</h1>
 
-- Electron + Next.js desktop app
-- Overlay mode with direct edit controls
-- Global hotkeys for send/toggle actions
-- Python bridge for low-level input automation
-- External launcher flow for 1-click update + run
+<p align="center">
+  Desktop overlay cho game/chat với mục tiêu: <strong>gửi nhanh - quản lý gọn - thao tác 1 chạm</strong>.
+</p>
 
-## Tech Stack
+<p align="center">
+  <a href="https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest">Download Latest Release</a>
+</p>
+
+## QuickText Là Gì?
+
+QuickText là ứng dụng desktop giúp bạn quản lý câu chat mẫu và hiển thị overlay nổi trên màn hình, để chuyển câu và gửi câu cực nhanh trong lúc đang chơi game hoặc thao tác toàn màn hình.
+
+Mục tiêu của dự án không chỉ là gửi text nhanh, mà còn là giữ trải nghiệm mượt, ít gián đoạn và dễ làm chủ bằng hotkey.
+
+## Chức Năng Nổi Bật
+
+- Text Manager tập trung:
+  Lưu danh sách câu chat, ghi chú từng câu, chọn nhanh câu đang dùng.
+- Overlay nổi trong game:
+  Hiển thị text hiện tại trực tiếp trên màn hình, có thể bật/tắt tức thời.
+- Chỉnh overlay trực tiếp:
+  Kéo vị trí, chỉnh opacity, cỡ chữ, màu chữ, canh lề, bật/tắt từng thành phần.
+- Bộ hotkey đầy đủ:
+  Bật/tắt overlay, bật/tắt toàn app, bật chế độ chỉnh overlay, gửi câu hiện tại, hiện/ẩn manager.
+- Chuyển câu bằng thao tác nhanh:
+  `Shift + Wheel` để đổi câu trước/sau mượt trong ngữ cảnh game.
+- Cấu hình đồng bộ:
+  Cài đặt UI, overlay, hotkey và hành vi gửi được lưu lại xuyên suốt các phiên.
+- Telemetry cơ bản:
+  Theo dõi số lần gửi thành công/thất bại, độ trễ và lỗi hotkey để debug nhanh.
+- 1-click launcher update:
+  Launcher tự check phiên bản mới, tải bản mới, verify checksum, giải nén và chạy app.
+
+## Trải Nghiệm Người Dùng
+
+- 1 click mở app.
+- 1 click tự cập nhật khi có bản mới.
+- 1 click quay lại thao tác chính mà không cần xử lý cài đặt phức tạp.
+
+## Công Nghệ
 
 - Electron
-- Next.js (App Router)
-- React + TypeScript
-- Python (Flask + keyboard/mouse hooks)
+- Next.js + React + TypeScript
+- Python bridge (Flask + input hooks)
 
-## Local Development
+## Người Tạo Dự Án
 
-Prerequisites:
+**Kira**  
+GitHub: [@AkiyamaKira2003](https://github.com/AkiyamaKira2003)
 
-- Node.js 20+
-- Python 3.10+ (`py` on Windows)
+QuickText được xây để giải quyết bài toán thực tế: cần phản hồi nhanh trong game nhưng vẫn giữ được tính tự nhiên, dễ kiểm soát và dễ tùy biến.
 
-Install:
+## Giấy Phép
 
-```powershell
-npm install
-```
-
-Run dev:
-
-```powershell
-npm run dev
-```
-
-## Build Production
-
-Build installer (`dist:win`):
-
-```powershell
-npm run dist:win
-```
-
-Build unpacked folder (`dist:folder`):
-
-```powershell
-npm run dist:folder
-```
-
-## 1-Click Launcher Update Flow
-
-Launcher files:
-
-- `launcher/QuickText.bat`
-- `launcher/QuickText.ps1`
-
-Flow:
-
-1. Read online `latest.json`
-2. Compare local version
-3. Download zip if outdated
-4. Verify SHA256
-5. Extract and swap runtime
-6. Run `QuickText.exe`
-
-Setup:
-
-1. Run `launcher\QuickText.bat` directly.
-2. Launcher uses default GitHub manifest:
-   `https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest/download/latest.json`
-3. Optional override:
-   copy `launcher/launcher.config.example.json` -> `launcher/launcher.config.json` and change `manifestUrl`.
-
-Details: [Launcher Update Flow](docs/launcher-update-flow.md)
-
-## Release Assets + Manifest
-
-Generate `latest.json` from a zip:
-
-```powershell
-npm run release:launcher:manifest -- --zip "dist/QuickText-win-x64.zip" --version 0.1.0 --base-url "https://github.com/AkiyamaKira2003/Quick-text-manager/releases/download/v0.1.0/" --out "dist/latest.json"
-```
-
-Build zip + manifest in one step:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl "https://github.com/AkiyamaKira2003/Quick-text-manager/releases/download/v0.1.0/"
-```
-
-Optional: compile launcher `.ps1` to `.exe`:
-
-```powershell
-npm run release:launcher:exe
-```
-
-## Public GitHub Release (Recommended)
-
-- Push tag (example `v0.1.0`)
-- GitHub Actions workflow builds zip + `latest.json`
-- Workflow publishes assets to the GitHub Release page
-
-Workflow file: [.github/workflows/release-win.yml](.github/workflows/release-win.yml)
-
-Public publish checklist: [docs/github-publish-checklist.md](docs/github-publish-checklist.md)
-
-## License
-
-This project is licensed under the MIT License.
-
-See [LICENSE](LICENSE) and [COPYRIGHT.md](COPYRIGHT.md).
+Dự án phát hành theo giấy phép MIT.  
+Xem [LICENSE](LICENSE) và [COPYRIGHT.md](COPYRIGHT.md).
