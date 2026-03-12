@@ -110,6 +110,11 @@ const PYTHON_SEND_TIMEOUT_MS = 5000
 const PYTHON_CONFIG_TIMEOUT_MS = 3000
 const PYTHON_EVENTS_TIMEOUT_MS = 3000
 const PYTHON_RETRY_BASE_DELAY_MS = 140
+const PYTHON_HEALTHCHECK_TIMEOUT_MS = parseIntegerEnv('QT_PYTHON_HEALTH_TIMEOUT_MS', 1200, 300, 10000)
+const PYTHON_HEALTH_CACHE_MS = parseIntegerEnv('QT_PYTHON_HEALTH_CACHE_MS', 900, 200, 5000)
+const PYTHON_BOOT_TIMEOUT_MS = parseIntegerEnv('QT_PYTHON_BOOT_TIMEOUT_MS', 9000, 1500, 60000)
+const PYTHON_BOOT_RETRY_COOLDOWN_MS = parseIntegerEnv('QT_PYTHON_BOOT_RETRY_COOLDOWN_MS', 5000, 1000, 60000)
+const PYTHON_AUTO_START_ENABLED = parseBooleanEnv('QT_PYTHON_AUTO_START', true)
 const TELEMETRY_MAX_ERROR_LENGTH = 320
 const TELEMETRY_MAX_LATENCY_MS = 120000
 const TELEMETRY_ROTATE_MAX_BYTES = 2 * 1024 * 1024
@@ -337,6 +342,14 @@ let profilingLogWritePromise = Promise.resolve()
 let packagedRendererProcess = null
 let packagedRendererStopping = false
 let packagedRendererPort = PACKAGED_RENDERER_PORT
+let managedPythonProcess = null
+let managedPythonStopping = false
+let managedPythonBootPromise = null
+let managedPythonLastError = ''
+let managedPythonRetryAfter = 0
+let managedPythonHealthAt = 0
+let managedPythonHealthOk = false
+let managedPythonLaunchCommand = ''
 let screenListenersRegistered = false
 let updateRuntime = createDefaultUpdateRuntime()
 let updateCheckPromise = null
@@ -2668,6 +2681,289 @@ function resolvePythonUrl(routePath) {
   }
 }
 
+function markPythonHealth(ok) {
+  managedPythonHealthAt = Date.now()
+  managedPythonHealthOk = !!ok
+}
+
+function getPythonBaseUrl() {
+  return (process.env.PYTHON_API_BASE_URL ?? DEFAULT_PYTHON_API_BASE_URL).trim()
+}
+
+function isLocalPythonBaseUrl() {
+  const base = getPythonBaseUrl()
+  try {
+    const parsed = new URL(base)
+    const host = String(parsed.hostname || '').toLowerCase()
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+  } catch {
+    return false
+  }
+}
+
+function getPythonServiceUnavailableMessage() {
+  const reason = managedPythonLastError.trim()
+  if (!reason) {
+    return 'Python service unavailable. Ensure Python 3 is installed and `python/tool.py` can run.'
+  }
+  return `Python service unavailable. ${reason}`
+}
+
+async function pingPythonService(timeoutMs = PYTHON_HEALTHCHECK_TIMEOUT_MS) {
+  const healthUrl = resolvePythonUrl('health')
+  if (!healthUrl) {
+    markPythonHealth(false)
+    return false
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(healthUrl, {
+      method: 'GET',
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+    const ok = response.ok
+    markPythonHealth(ok)
+    return ok
+  } catch {
+    markPythonHealth(false)
+    return false
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+function resolvePythonToolScriptPath() {
+  const candidates = [
+    path.resolve(process.cwd(), 'python', 'tool.py'),
+    path.resolve(__dirname, '..', 'python', 'tool.py'),
+    path.resolve(process.resourcesPath || '', 'python', 'tool.py'),
+    path.resolve(process.resourcesPath || '', 'app.asar.unpacked', 'python', 'tool.py'),
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    try {
+      if (fs.existsSync(candidate)) return candidate
+    } catch {
+      // Ignore broken candidate paths and continue.
+    }
+  }
+
+  return ''
+}
+
+function getPythonLaunchPlans(scriptPath) {
+  const plans = []
+  const explicitBinary = String(process.env.QT_PYTHON_BIN || '').trim()
+  if (explicitBinary) {
+    plans.push({
+      command: explicitBinary,
+      args: [scriptPath],
+      label: explicitBinary,
+    })
+  }
+
+  if (process.platform === 'win32') {
+    plans.push(
+      { command: 'py', args: ['-3', scriptPath], label: 'py -3' },
+      { command: 'py', args: [scriptPath], label: 'py' },
+      { command: 'python', args: [scriptPath], label: 'python' },
+      { command: 'python3', args: [scriptPath], label: 'python3' },
+    )
+    return plans
+  }
+
+  plans.push(
+    { command: 'python3', args: [scriptPath], label: 'python3' },
+    { command: 'python', args: [scriptPath], label: 'python' },
+  )
+  return plans
+}
+
+async function waitForManagedPythonReady(child, spawnErrorRef) {
+  const deadline = Date.now() + PYTHON_BOOT_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    if (spawnErrorRef.error) return false
+    if (child.exitCode !== null || child.killed) return false
+    if (await pingPythonService()) return true
+    await delayMs(280)
+  }
+  return false
+}
+
+function attachManagedPythonLogs(child, label) {
+  if (child.stdout) {
+    child.stdout.on('data', (chunk) => {
+      const line = String(chunk || '').trim()
+      if (!line) return
+      safeConsoleInfo(`[python:${label}] ${line}`)
+    })
+  }
+  if (child.stderr) {
+    child.stderr.on('data', (chunk) => {
+      const line = String(chunk || '').trim()
+      if (!line) return
+      safeConsoleError(`[python:${label}] ${line}`)
+    })
+  }
+}
+
+async function stopManagedPythonService() {
+  const child = managedPythonProcess
+  if (!child || child.killed) {
+    managedPythonProcess = null
+    return
+  }
+
+  managedPythonStopping = true
+  await new Promise((resolve) => {
+    let settled = false
+    const settle = () => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+
+    child.once('exit', settle)
+    try {
+      child.kill()
+    } catch {
+      settle()
+      return
+    }
+
+    setTimeout(() => {
+      if (settled) return
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // Ignore hard-stop failures.
+      }
+      settle()
+    }, 1500)
+  })
+
+  managedPythonProcess = null
+  managedPythonStopping = false
+  markPythonHealth(false)
+}
+
+async function startManagedPythonService() {
+  if (managedPythonProcess && !managedPythonProcess.killed) return true
+  if (!isLocalPythonBaseUrl()) {
+    managedPythonLastError = 'Auto-start is disabled for non-local PYTHON_API_BASE_URL.'
+    return false
+  }
+
+  const scriptPath = resolvePythonToolScriptPath()
+  if (!scriptPath) {
+    managedPythonLastError = 'Cannot find `python/tool.py` for auto-start.'
+    return false
+  }
+
+  const launchPlans = getPythonLaunchPlans(scriptPath)
+  if (!launchPlans.length) {
+    managedPythonLastError = 'No Python launcher candidates configured.'
+    return false
+  }
+
+  for (const plan of launchPlans) {
+    const spawnErrorRef = { error: null }
+    const child = spawn(plan.command, plan.args, {
+      cwd: path.dirname(scriptPath),
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    attachManagedPythonLogs(child, plan.label)
+    child.once('error', (error) => {
+      spawnErrorRef.error = error
+    })
+    child.on('exit', (code, signal) => {
+      if (managedPythonProcess === child) {
+        managedPythonProcess = null
+        markPythonHealth(false)
+      }
+      if (!managedPythonStopping) {
+        safeConsoleError(`[python] process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`)
+      }
+    })
+
+    const booted = await waitForManagedPythonReady(child, spawnErrorRef)
+    if (booted) {
+      managedPythonProcess = child
+      managedPythonLastError = ''
+      managedPythonLaunchCommand = `${plan.command} ${plan.args.join(' ')}`
+      markPythonHealth(true)
+      safeConsoleInfo(`[python] service ready via ${managedPythonLaunchCommand}`)
+      return true
+    }
+
+    managedPythonStopping = true
+    try {
+      child.kill()
+    } catch {
+      // Ignore shutdown failures for failed start attempts.
+    }
+    await delayMs(120)
+    managedPythonStopping = false
+
+    if (spawnErrorRef.error instanceof Error) {
+      managedPythonLastError = `Failed with ${plan.label}: ${spawnErrorRef.error.message}`
+    } else if (child.exitCode !== null) {
+      managedPythonLastError = `Failed with ${plan.label}: exited with code ${child.exitCode}.`
+    } else {
+      managedPythonLastError = `Failed with ${plan.label}: startup timed out.`
+    }
+    safeConsoleError(`[python] ${managedPythonLastError}`)
+  }
+
+  markPythonHealth(false)
+  return false
+}
+
+async function ensurePythonServiceAvailable() {
+  if (managedPythonProcess && !managedPythonProcess.killed) return true
+
+  const now = Date.now()
+  if (now - managedPythonHealthAt < PYTHON_HEALTH_CACHE_MS) {
+    if (managedPythonHealthOk) return true
+    if (now < managedPythonRetryAfter) return false
+  }
+
+  const reachable = await pingPythonService()
+  if (reachable) {
+    managedPythonLastError = ''
+    managedPythonLaunchCommand = ''
+    return true
+  }
+
+  if (!PYTHON_AUTO_START_ENABLED) return false
+  if (now < managedPythonRetryAfter) return false
+  if (managedPythonBootPromise) return managedPythonBootPromise
+
+  managedPythonBootPromise = startManagedPythonService()
+    .then((ok) => {
+      if (ok) {
+        managedPythonRetryAfter = 0
+        return true
+      }
+      managedPythonRetryAfter = Date.now() + PYTHON_BOOT_RETRY_COOLDOWN_MS
+      return false
+    })
+    .finally(() => {
+      managedPythonBootPromise = null
+    })
+
+  return managedPythonBootPromise
+}
+
 function isObjectPayload(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
@@ -2792,6 +3088,11 @@ async function handlePythonSend(rawPayload) {
     return toPythonError(500, 'Invalid PYTHON_API_BASE_URL', correlationId)
   }
 
+  const pythonReady = await ensurePythonServiceAvailable()
+  if (!pythonReady) {
+    return toPythonError(503, getPythonServiceUnavailableMessage(), correlationId)
+  }
+
   const payload = { text, press_enter: pressEnter }
   if (delayRange) payload.delay_range = delayRange
 
@@ -2814,17 +3115,16 @@ async function handlePythonSend(rawPayload) {
       return toPythonError(status, backendError, correlationId)
     }
 
+    markPythonHealth(true)
     return { ok: true, correlationId }
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       return toPythonError(504, 'Python service timeout', correlationId)
     }
 
-    return toPythonError(
-      503,
-      'Python service unavailable. Ensure `npm run dev:python` is running and dependencies are installed.',
-      correlationId,
-    )
+    markPythonHealth(false)
+
+    return toPythonError(503, getPythonServiceUnavailableMessage(), correlationId)
   }
 }
 
@@ -2907,6 +3207,11 @@ async function handlePythonConfigure(rawPayload) {
     return toPythonError(500, 'Invalid PYTHON_API_BASE_URL', correlationId)
   }
 
+  const pythonReady = await ensurePythonServiceAvailable()
+  if (!pythonReady) {
+    return toPythonError(503, getPythonServiceUnavailableMessage(), correlationId)
+  }
+
   try {
     const { response, body: responseBody } = await fetchPythonJsonWithPolicy(
       configureUrl,
@@ -2926,17 +3231,15 @@ async function handlePythonConfigure(rawPayload) {
       return toPythonError(status, backendError, correlationId)
     }
 
+    markPythonHealth(true)
     return { ok: true, config: responseBody, correlationId }
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       return toPythonError(504, 'Python configure timeout', correlationId)
     }
 
-    return toPythonError(
-      503,
-      'Python service unavailable. Ensure `npm run dev:python` is running and dependencies are installed.',
-      correlationId,
-    )
+    markPythonHealth(false)
+    return toPythonError(503, getPythonServiceUnavailableMessage(), correlationId)
   }
 }
 
@@ -2965,6 +3268,18 @@ async function handlePythonEvents(rawAfter) {
       last_id: after,
       degraded: true,
       error: 'Invalid PYTHON_API_BASE_URL',
+      correlationId,
+    }
+  }
+
+  const pythonReady = await ensurePythonServiceAvailable()
+  if (!pythonReady) {
+    return {
+      ok: true,
+      events: [],
+      last_id: after,
+      degraded: true,
+      error: getPythonServiceUnavailableMessage(),
       correlationId,
     }
   }
@@ -3013,6 +3328,7 @@ async function handlePythonEvents(rawAfter) {
       }
     }
 
+    markPythonHealth(true)
     return {
       ok: true,
       events: Array.isArray(responseBody.events) ? responseBody.events : [],
@@ -3020,6 +3336,7 @@ async function handlePythonEvents(rawAfter) {
       correlationId,
     }
   } catch (error) {
+    markPythonHealth(false)
     if (error instanceof Error && error.name === 'AbortError') {
       return {
         ok: true,
@@ -4188,6 +4505,16 @@ function cleanupRuntime() {
     packagedRendererProcess = null
   }
 
+  if (managedPythonProcess && !managedPythonProcess.killed) {
+    managedPythonStopping = true
+    try {
+      managedPythonProcess.kill()
+    } catch {
+      // Ignore child process termination errors.
+    }
+    managedPythonProcess = null
+  }
+
   destroyManagedWindow(hotkeyWindow)
   destroyManagedWindow(startupSplashWindow)
   destroyManagedWindow(overlayWindow)
@@ -4220,6 +4547,13 @@ function cleanupRuntime() {
   mainRendererReadySenderId = 0
   packagedRendererStopping = false
   packagedRendererPort = PACKAGED_RENDERER_PORT
+  managedPythonStopping = false
+  managedPythonBootPromise = null
+  managedPythonLastError = ''
+  managedPythonRetryAfter = 0
+  managedPythonHealthAt = 0
+  managedPythonHealthOk = false
+  managedPythonLaunchCommand = ''
   updateRuntime = createDefaultUpdateRuntime()
   updateCheckPromise = null
   autoUpdaterInitialized = false
@@ -4300,6 +4634,11 @@ if (hasSingleInstanceLock) {
         }
         await setStartupSplashStep(0.08, 'initializing')
       }
+
+      const pythonWarmupPromise = ensurePythonServiceAvailable().catch((error) => {
+        safeConsoleError('[python] warmup failed:', error)
+        return false
+      })
 
       const settingsLoadPromise = (async () => {
         if (splashShown) {
@@ -4384,6 +4723,7 @@ if (hasSingleInstanceLock) {
       logStartupPhase('overlay', settingsSnapshot.overlayVisible ? 'visible' : 'hidden')
       scheduleRuntimeStateSync(splashShown ? 24 : 0)
       void telemetryWarmupPromise
+      void pythonWarmupPromise
     })
     .catch((error) => {
       safeConsoleError('[startup] failed:', error)
@@ -4417,6 +4757,7 @@ app.on('before-quit', (event) => {
     flushPendingSettingsWrite({ throwOnError: true }),
     flushPendingTelemetryWrite({ throwOnError: true }),
     stopPackagedRendererServer(),
+    stopManagedPythonService(),
     shutdownProfilingRuntime(),
   ])
     .finally(() => {

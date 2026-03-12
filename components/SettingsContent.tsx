@@ -295,6 +295,8 @@ export default function SettingsContent({ settings, updateSettings, className = 
         </div>
       </section>
 
+      <QuickHotkeyPanel settings={settings} updateSettings={updateSettings} />
+
       <section className="rounded-3xl border-2 border-[var(--qt-border)] bg-[var(--qt-surface)] p-4 qt-elev-medium">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="space-y-2">
@@ -504,8 +506,6 @@ export default function SettingsContent({ settings, updateSettings, className = 
           </div>
         </div>
       </section>
-
-      <QuickHotkeyPanel settings={settings} updateSettings={updateSettings} />
     </div>
   )
 }

@@ -41,10 +41,9 @@ const ACTION_SUCCESS_FEEDBACK_MS = 900
 const ACTION_ERROR_FEEDBACK_MS = 2400
 const KEYBOARD_MOVE_STEP_PX = 1
 const KEYBOARD_MOVE_FAST_STEP_PX = 5
-const WHEEL_BUFFER_DEBOUNCE_MS = 80
-const WHEEL_THRESHOLD_RATIO = 0.4
-const WHEEL_STEP_COMPRESSION_EXP = 0.62
-const PHRASE_SWITCH_TRANSITION_MS = 180
+const WHEEL_BUFFER_DEBOUNCE_MS = 56
+const WHEEL_MAX_BATCH_STEPS = 6
+const PHRASE_SWITCH_TRANSITION_MS = 120
 
 type SendFeedbackState = 'idle' | 'optimistic' | 'success' | 'error'
 type ActionFeedbackState = 'idle' | 'optimistic' | 'success' | 'error'
@@ -1771,18 +1770,14 @@ function withWillChange(style: CSSProperties, enabled: boolean): CSSProperties {
   return { ...style, willChange: 'transform, opacity' }
 }
 
-function getDynamicWheelThreshold(itemCount: number) {
-  const safeCount = Math.max(1, Math.floor(itemCount))
-  return Math.max(1, Math.round(safeCount * WHEEL_THRESHOLD_RATIO))
+function getDynamicWheelThreshold(_itemCount: number) {
+  return 1
 }
 
 function compressWheelSteps(stepDelta: number) {
   const normalized = Number.isFinite(stepDelta) ? Math.trunc(stepDelta) : 0
   if (normalized === 0) return 0
-  const magnitude = Math.abs(normalized)
-  if (magnitude <= 1) return normalized > 0 ? 1 : -1
-  const compressed = Math.max(1, Math.round(magnitude ** WHEEL_STEP_COMPRESSION_EXP))
-  return normalized > 0 ? compressed : -compressed
+  return Math.max(-WHEEL_MAX_BATCH_STEPS, Math.min(WHEEL_MAX_BATCH_STEPS, normalized))
 }
 
 function clampNumber(value: number, min: number, max: number) {

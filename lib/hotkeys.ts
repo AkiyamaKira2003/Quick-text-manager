@@ -346,6 +346,16 @@ export function isReservedCombo(combo: string) {
   return normalized ? RESERVED_COMBOS.has(normalized) : false
 }
 
+export function isHotkeyActionActive(
+  settings: Pick<Settings, 'appEnabled' | 'overlayVisible' | 'overlayInteractive'>,
+  actionId: HotkeyActionId,
+) {
+  if (actionId === 'app.toggle_enabled') return settings.appEnabled
+  if (actionId === 'overlay.toggle_visibility') return settings.appEnabled && settings.overlayVisible
+  if (actionId === 'overlay.toggle_interaction') return settings.appEnabled && settings.overlayInteractive
+  return settings.appEnabled
+}
+
 function getActionComboWithOverrides(actionId: HotkeyActionId, overrides: HotkeyOverrides) {
   const override = normalizeCombo(overrides[actionId])
   if (override) return override

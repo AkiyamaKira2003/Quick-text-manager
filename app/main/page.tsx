@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { useSettings } from '@/hooks/use-settings'
-import { formatComboForDisplay, getEffectiveHotkeyBindings } from '@/lib/hotkeys'
+import { formatComboForDisplay, getEffectiveHotkeyBindings, isHotkeyActionActive } from '@/lib/hotkeys'
 import { t, type MessageKey } from '@/lib/i18n'
 import type { HotkeyActionId, ProfilingRuntimeState, TelemetrySnapshot } from '@/types'
 import { Minus, Power, Settings2, X } from 'lucide-react'
@@ -147,6 +147,23 @@ export default function MainPage() {
     () => new Map(effectiveBindings.map((item) => [item.action.id, formatComboForDisplay(item.combo)])),
     [effectiveBindings],
   )
+  const hotkeyStateByActionId = useMemo(
+    () =>
+      new Map(
+        HOTKEY_CHIPS.map((chip) => [
+          chip.actionId,
+          isHotkeyActionActive(
+            {
+              appEnabled: settings?.appEnabled ?? true,
+              overlayVisible: settings?.overlayVisible ?? true,
+              overlayInteractive: settings?.overlayInteractive ?? false,
+            },
+            chip.actionId,
+          ),
+        ]),
+      ),
+    [settings?.appEnabled, settings?.overlayInteractive, settings?.overlayVisible],
+  )
   const appToggleCombo = comboByActionId.get('app.toggle_enabled') ?? formatComboForDisplay(settings?.appToggleHotkey ?? 'Shift+5')
   const sendSuccessCount = telemetry?.send.successCount ?? 0
   const sendFailureCount = telemetry?.send.failureCount ?? 0
@@ -273,7 +290,11 @@ export default function MainPage() {
                   {HOTKEY_CHIPS.map((chip) => (
                     <span
                       key={chip.actionId}
-                      className="max-w-[42ch] truncate rounded-full border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] px-2 py-0.5 text-[var(--qt-muted)]"
+                      className={`max-w-[42ch] truncate rounded-full border px-2 py-0.5 ${
+                        hotkeyStateByActionId.get(chip.actionId)
+                          ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)]/20 text-[var(--qt-fg)]'
+                          : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-muted)]'
+                      }`}
                       title={`${t(language, chip.labelKey)}: ${comboByActionId.get(chip.actionId) ?? '-'}`}
                     >
                       {t(language, chip.labelKey)}: {comboByActionId.get(chip.actionId) ?? '-'}

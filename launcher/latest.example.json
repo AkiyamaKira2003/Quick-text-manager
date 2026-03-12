@@ -1,0 +1,11 @@
+{
+  "app": "QuickText",
+  "channel": "stable",
+  "version": "0.1.0",
+  "url": "https://cdn.example.com/quicktext/QuickText-win-x64.zip",
+  "sha256": "replace_with_sha256",
+  "size": 123456789,
+  "entryExe": "QuickText.exe",
+  "publishedAt": "2026-03-13T00:00:00.000Z",
+  "notes": "Optional release notes text"
+}

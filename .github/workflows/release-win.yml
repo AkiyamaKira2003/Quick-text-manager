@@ -1,0 +1,43 @@
+name: release-win
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows unpacked app
+        run: npm run dist:folder
+
+      - name: Build launcher zip + latest.json
+        shell: pwsh
+        run: |
+          $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/QuickText-win-x64.zip
+            dist/latest.json

@@ -9,6 +9,7 @@ import {
   findHotkeyConflict,
   formatComboForDisplay,
   getEffectiveHotkeyBindings,
+  isHotkeyActionActive,
   isTypingTarget,
   isReservedCombo,
 } from '@/lib/hotkeys'
@@ -43,6 +44,23 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
   const comboByActionId = useMemo(
     () => new Map(effectiveBindings.map((item) => [item.action.id, formatComboForDisplay(item.combo)])),
     [effectiveBindings],
+  )
+  const stateByActionId = useMemo(
+    () =>
+      new Map(
+        MAIN_HOTKEY_ROWS.map((row) => [
+          row.actionId,
+          isHotkeyActionActive(
+            {
+              appEnabled: settings.appEnabled,
+              overlayVisible: settings.overlayVisible,
+              overlayInteractive: settings.overlayInteractive,
+            },
+            row.actionId,
+          ),
+        ]),
+      ),
+    [settings.appEnabled, settings.overlayInteractive, settings.overlayVisible],
   )
   const bindingRecords = useMemo(
     () =>
@@ -122,12 +140,15 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
             key={row.actionId}
             label={t(language, row.labelKey)}
             combo={comboByActionId.get(row.actionId) ?? ''}
+            active={stateByActionId.get(row.actionId) ?? false}
             recording={recordingActionId === row.actionId}
             onClick={() => {
               setRecordingActionId((current) => (current === row.actionId ? null : row.actionId))
               setBindStatus('')
             }}
             recordingLabel={t(language, 'hk.recording')}
+            activeLabel={t(language, 'main.enabled')}
+            inactiveLabel={t(language, 'main.disabled')}
           />
         ))}
       </div>
@@ -143,27 +164,53 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
 type BindHotkeyRowProps = {
   label: string
   combo: string
+  active: boolean
   recording: boolean
   onClick: () => void
   recordingLabel: string
+  activeLabel: string
+  inactiveLabel: string
 }
 
-function BindHotkeyRow({ label, combo, recording, onClick, recordingLabel }: BindHotkeyRowProps) {
+function BindHotkeyRow({
+  label,
+  combo,
+  active,
+  recording,
+  onClick,
+  recordingLabel,
+  activeLabel,
+  inactiveLabel,
+}: BindHotkeyRowProps) {
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-2 rounded-xl border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] px-2 py-1.5 text-left hover:border-[var(--qt-primary)]"
+      className={`flex w-full items-center justify-between gap-2 rounded-xl border px-2 py-1.5 text-left ${
+        active
+          ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)]/14 hover:border-[var(--qt-primary)]'
+          : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] hover:border-[var(--qt-primary)]'
+      }`}
     >
-      <span className="text-[var(--qt-muted)]">{label}</span>
-      <code
-        className={`rounded border px-2 py-0.5 text-xs font-semibold ${
-          recording
-            ? 'border-[var(--qt-accent)] bg-[var(--qt-accent)] text-[var(--qt-on-accent)]'
-            : 'border-[var(--qt-border)] bg-[var(--qt-surface)] text-[var(--qt-fg)]'
-        }`}
-      >
-        {recording ? recordingLabel : combo}
-      </code>
+      <div className="min-w-0">
+        <p className={`truncate text-sm font-semibold ${active ? 'text-[var(--qt-fg)]' : 'text-[var(--qt-muted)]'}`}>{label}</p>
+        <p className={`text-[10px] uppercase tracking-wide ${active ? 'text-emerald-300/90' : 'text-[var(--qt-muted)]'}`}>
+          {active ? activeLabel : inactiveLabel}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className={`inline-block h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-300' : 'bg-[var(--qt-muted)]/70'}`} />
+        <code
+          className={`rounded border px-2 py-0.5 text-xs font-semibold ${
+            recording
+              ? 'border-[var(--qt-accent)] bg-[var(--qt-accent)] text-[var(--qt-on-accent)]'
+              : active
+                ? 'border-[var(--qt-primary)] bg-[var(--qt-surface)] text-[var(--qt-fg)]'
+                : 'border-[var(--qt-border)] bg-[var(--qt-surface)] text-[var(--qt-fg)]'
+          }`}
+        >
+          {recording ? recordingLabel : combo}
+        </code>
+      </div>
     </button>
   )
 }
