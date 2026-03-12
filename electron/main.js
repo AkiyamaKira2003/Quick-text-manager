@@ -125,6 +125,7 @@ const TRAY_MENU_REFRESH_DEBOUNCE_MS = 90
 const OVERLAY_REFIT_DEBOUNCE_MS = 220
 const OVERLAY_DEFER_BOOT_MS = 260
 const ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS = 280
+const ELECTRON_APP_TOGGLE_DEBOUNCE_MS = 520
 const STARTUP_PHASE_LOG_ENABLED = parseBooleanEnv('QT_STARTUP_PHASE_LOG', false)
 const OVERLAY_LIFECYCLE_LOG_ENABLED = parseBooleanEnv('QT_OVERLAY_LIFECYCLE_LOG', false)
 const SKIP_ADMIN_CHECK = parseBooleanEnv('QT_SKIP_ADMIN_CHECK', false)
@@ -2685,8 +2686,13 @@ function resolvePythonUrl(routePath) {
 }
 
 function markPythonHealth(ok) {
+  const previous = managedPythonHealthOk
   managedPythonHealthAt = Date.now()
   managedPythonHealthOk = !!ok
+  if (previous === managedPythonHealthOk) return
+  if (currentSettings) {
+    ensureHotkeys(currentSettings)
+  }
 }
 
 function getPythonBaseUrl() {
@@ -4005,7 +4011,7 @@ function schedulePersistMainBounds() {
 }
 
 function shouldUseElectronHotkeyFallback() {
-  return app.isPackaged || FORCE_ELECTRON_HOTKEY_FALLBACK
+  return FORCE_ELECTRON_HOTKEY_FALLBACK
 }
 
 function unregisterElectronHotkeys() {
@@ -4027,8 +4033,9 @@ function unregisterElectronHotkeys() {
 function shouldSuppressElectronHotkeyAction(actionId) {
   const now = Date.now()
   const key = String(actionId || '').trim() || 'unknown'
+  const debounceMs = key === 'app.toggle_enabled' ? ELECTRON_APP_TOGGLE_DEBOUNCE_MS : ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS
   const lastAt = Number(electronHotkeyLastTriggeredAt.get(key) || 0)
-  if (now - lastAt < ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS) {
+  if (now - lastAt < debounceMs) {
     return true
   }
   electronHotkeyLastTriggeredAt.set(key, now)

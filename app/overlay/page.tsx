@@ -37,6 +37,7 @@ const INPUT_POLL_DEGRADED_MS = 1400
 const STYLE_SAVE_DEBOUNCE_MS = 140
 const INDEX_SAVE_DEBOUNCE_MS = 90
 const HOTKEY_ERROR_DEBOUNCE_MS = 1800
+const APP_TOGGLE_ACTION_DEBOUNCE_MS = 520
 const SEND_SUCCESS_FEEDBACK_MS = 820
 const SEND_ERROR_FEEDBACK_MS = 2400
 const ACTION_SUCCESS_FEEDBACK_MS = 900
@@ -138,6 +139,7 @@ function OverlayPageComponent() {
   const switchAnimatingRef = useRef(false)
   const pythonSyncTimerRef = useRef<number | null>(null)
   const pythonSyncSignatureRef = useRef('')
+  const lastAppToggleActionAtRef = useRef(0)
   const lastHotkeyErrorRef = useRef<{ source: HotkeyErrorSource; message: string; at: number }>({
     source: 'unknown',
     message: '',
@@ -502,6 +504,9 @@ function OverlayPageComponent() {
 
       if (actionId === 'app.toggle_enabled') {
         if (!current) return
+        const now = Date.now()
+        if (now - lastAppToggleActionAtRef.current < APP_TOGGLE_ACTION_DEBOUNCE_MS) return
+        lastAppToggleActionAtRef.current = now
         const nextEnabled = !current.appEnabled
         showActionFeedback('optimistic', t(language, 'overlay.toggleAppQueued'))
         void updateSettings(
