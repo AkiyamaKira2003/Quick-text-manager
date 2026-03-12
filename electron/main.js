@@ -52,6 +52,7 @@ const PACKAGED_RENDERER_MAX_PORT_SCAN = 40
 const PACKAGED_RENDERER_BOOT_TIMEOUT_MS = 45000
 const STARTUP_SPLASH_LABELS = {
   vi: {
+    firstLaunchNotice: 'Lần chạy đầu: app đang tạo cache nên sẽ chậm hơn một chút...',
     initializing: 'Đang khởi động QuickText...',
     bootRenderer: 'Đang khởi động renderer...',
     loadingSettings: 'Đang nạp cài đặt...',
@@ -60,6 +61,7 @@ const STARTUP_SPLASH_LABELS = {
     creatingMain: 'Đang tạo cửa sổ chính...',
     loadingInterface: 'Đang tải giao diện...',
     compilingMain: 'Đang chuẩn bị giao diện...',
+    compilingMainFirstLaunch: 'Lần chạy đầu: đang chuẩn bị giao diện lần đầu (các lần sau sẽ nhanh hơn)...',
     preparingControls: 'Đang khởi tạo điều khiển...',
     creatingOverlay: 'Đang tạo overlay...',
     applyingSettings: 'Đang áp dụng cài đặt...',
@@ -73,6 +75,7 @@ const STARTUP_SPLASH_LABELS = {
     ready: 'Sẵn sàng',
   },
   en: {
+    firstLaunchNotice: 'First launch: building cache, startup may take a bit longer...',
     initializing: 'Booting QuickText...',
     bootRenderer: 'Starting renderer...',
     loadingSettings: 'Loading settings...',
@@ -81,6 +84,7 @@ const STARTUP_SPLASH_LABELS = {
     creatingMain: 'Creating main window...',
     loadingInterface: 'Loading interface...',
     compilingMain: 'Compiling interface...',
+    compilingMainFirstLaunch: 'First launch: preparing the interface for the first time (next launches will be faster)...',
     preparingControls: 'Preparing controls...',
     creatingOverlay: 'Creating overlay...',
     applyingSettings: 'Applying settings...',
@@ -320,6 +324,7 @@ let suppressSettingsBlurClose = false
 let startupSplashActive = false
 let startupSplashStartedAt = 0
 let startupSplashProgress = 0
+let startupFirstLaunch = false
 let mainRendererReadySenderId = 0
 let correlationSeed = 0
 let profilingState = createDefaultProfilingState()
@@ -2003,6 +2008,14 @@ function shouldShowStartupSplashOnLaunch() {
   return !!resolveStartupSplashImagePath()
 }
 
+function detectStartupFirstLaunch() {
+  try {
+    return !fs.existsSync(SETTINGS_PATH)
+  } catch {
+    return false
+  }
+}
+
 function getStartupSplashLanguage() {
   if (currentSettings?.uiLanguage === 'vi' || currentSettings?.uiLanguage === 'en') {
     return currentSettings.uiLanguage
@@ -2558,7 +2571,7 @@ async function waitForMainWindowStartupLoad() {
     compileHintTimer = setTimeout(() => {
       if (settled || didFinishLoad) return
       logStartupPhase('main-window', 'compile-hint')
-      void setStartupSplashStep(0.5, 'compilingMain')
+      void setStartupSplashStep(0.5, startupFirstLaunch ? 'compilingMainFirstLaunch' : 'compilingMain')
     }, STARTUP_MAIN_COMPILE_HINT_DELAY_MS)
 
     onRendererReady = (event) => {
@@ -4089,6 +4102,7 @@ function cleanupRuntime() {
   startupSplashActive = false
   startupSplashStartedAt = 0
   startupSplashProgress = 0
+  startupFirstLaunch = false
   mainBoundsSignature = ''
   mainRendererReadySenderId = 0
   packagedRendererStopping = false
@@ -4161,12 +4175,16 @@ if (hasSingleInstanceLock) {
           void checkForAppUpdates('startup')
         }, AUTO_UPDATE_STARTUP_DELAY_MS)
       }
+      startupFirstLaunch = detectStartupFirstLaunch()
       startupSplashActive = false
       const splashShown = await showStartupSplashIfNeeded()
       startupSplashActive = splashShown
       logStartupPhase('splash', splashShown ? 'shown' : 'skipped')
 
       if (splashShown) {
+        if (startupFirstLaunch) {
+          await setStartupSplashStep(0.07, 'firstLaunchNotice')
+        }
         await setStartupSplashStep(0.08, 'initializing')
       }
 
