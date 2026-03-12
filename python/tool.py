@@ -42,7 +42,6 @@ DEFAULT_APP_TOGGLE_HOTKEY = "shift+5"
 DEFAULT_PRESS_ENTER = False
 DEFAULT_HOTKEY_DEBOUNCE_MS = 90
 DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS = 120
-DEFAULT_APP_TOGGLE_DEBOUNCE_MS = 520
 ACTION_OVERLAY_TOGGLE = "overlay.toggle_visibility"
 ACTION_MAIN_TOGGLE = "main.toggle_visibility"
 ACTION_OVERLAY_EDIT = "overlay.toggle_interaction"
@@ -88,7 +87,6 @@ runtime_state = {
         ACTION_OVERLAY_EDIT: 0.0,
         ACTION_APP_TOGGLE: 0.0,
     },
-    "app_toggle_latched": False,
     "last_error": "",
     "last_send_at": 0.0,
 }
@@ -162,42 +160,6 @@ def parse_hotkey_debounce_ms(raw: Any, fallback: int) -> int:
     if value < 20 or value > 1000:
         raise ValueError("hotkey_debounce_ms must be between 20 and 1000")
     return value
-
-
-def is_hotkey_combo_pressed(hotkey: str) -> bool:
-    if keyboard_lib is None:
-        return False
-
-    parts = [segment.strip() for segment in str(hotkey).split("+") if segment.strip()]
-    if not parts:
-        return False
-
-    try:
-        for part in parts:
-            if not keyboard_lib.is_pressed(part):
-                return False
-        return True
-    except Exception:
-        return False
-
-
-def release_app_toggle_latch_when_released(hotkey: str) -> None:
-    def worker() -> None:
-        # Prevent hold-to-repeat: only unlock after combo is fully released.
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline:
-            if not is_hotkey_combo_pressed(hotkey):
-                break
-            time.sleep(0.02)
-
-        with state_lock:
-            runtime_state["app_toggle_latched"] = False
-
-    try:
-        threading.Thread(target=worker, daemon=True).start()
-    except Exception:
-        with state_lock:
-            runtime_state["app_toggle_latched"] = False
 
 
 def type_text(text: str, delay_range: tuple[float, float], press_enter: bool) -> None:
@@ -357,11 +319,7 @@ def disable_non_toggle_runtime_hotkeys() -> None:
 
 def trigger_action_hotkey(action_id: str) -> None:
     if action_id == ACTION_APP_TOGGLE:
-        app_toggle_hotkey = DEFAULT_APP_TOGGLE_HOTKEY
         with state_lock:
-            if bool(runtime_state.get("app_toggle_latched", False)):
-                return
-
             last_map = runtime_state.get("last_action_trigger_at")
             if not isinstance(last_map, dict):
                 last_map = {}
@@ -369,15 +327,13 @@ def trigger_action_hotkey(action_id: str) -> None:
 
             last_trigger = float(last_map.get(action_id, 0.0))
             now = time.monotonic()
-            if now - last_trigger < DEFAULT_APP_TOGGLE_DEBOUNCE_MS / 1000:
+            if now - last_trigger < DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS / 1000:
                 return
             last_map[action_id] = now
 
             next_enabled = not bool(runtime_state.get("app_enabled", True))
             runtime_state["app_enabled"] = next_enabled
             send_config["app_enabled"] = next_enabled
-            runtime_state["app_toggle_latched"] = True
-            app_toggle_hotkey = str(send_config.get("app_toggle_hotkey", DEFAULT_APP_TOGGLE_HOTKEY))
             send_hotkey = str(send_config.get("send_hotkey", DEFAULT_SEND_HOTKEY))
             overlay_toggle_hotkey = str(send_config.get("overlay_toggle_hotkey", DEFAULT_OVERLAY_TOGGLE_HOTKEY))
             main_toggle_hotkey = str(send_config.get("main_toggle_hotkey", DEFAULT_MAIN_TOGGLE_HOTKEY))
@@ -398,7 +354,6 @@ def trigger_action_hotkey(action_id: str) -> None:
             disable_non_toggle_runtime_hotkeys()
 
         add_event("action", action=action_id)
-        release_app_toggle_latch_when_released(app_toggle_hotkey)
         return
 
     with state_lock:
