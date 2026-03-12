@@ -68,9 +68,11 @@ Flow:
 
 Setup:
 
-1. Copy `launcher/launcher.config.example.json` to `launcher/launcher.config.json`
-2. Set `manifestUrl` to your hosted `latest.json`
-3. Run `launcher\QuickText.bat`
+1. Run `launcher\QuickText.bat` directly.
+2. Launcher uses default GitHub manifest:
+   `https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest/download/latest.json`
+3. Optional override:
+   copy `launcher/launcher.config.example.json` -> `launcher/launcher.config.json` and change `manifestUrl`.
 
 Details: [Launcher Update Flow](docs/launcher-update-flow.md)
 
@@ -79,13 +81,13 @@ Details: [Launcher Update Flow](docs/launcher-update-flow.md)
 Generate `latest.json` from a zip:
 
 ```powershell
-npm run release:launcher:manifest -- --zip "dist/QuickText-win-x64.zip" --version 0.1.0 --base-url "https://cdn.example.com/quicktext/" --out "dist/latest.json"
+npm run release:launcher:manifest -- --zip "dist/QuickText-win-x64.zip" --version 0.1.0 --base-url "https://github.com/AkiyamaKira2003/Quick-text-manager/releases/download/v0.1.0/" --out "dist/latest.json"
 ```
 
 Build zip + manifest in one step:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl "https://cdn.example.com/quicktext/"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl "https://github.com/AkiyamaKira2003/Quick-text-manager/releases/download/v0.1.0/"
 ```
 
 Optional: compile launcher `.ps1` to `.exe`:

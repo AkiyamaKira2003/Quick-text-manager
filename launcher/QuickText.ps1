@@ -17,7 +17,7 @@ if (-not $Channel) {
 }
 
 $script:LauncherName = 'QuickTextLauncher'
-$script:DefaultManifestUrl = 'https://example.com/quicktext/latest.json'
+$script:DefaultManifestUrl = 'https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest/download/latest.json'
 $script:DefaultEntryExe = 'QuickText.exe'
 
 function Write-LauncherLog {
@@ -181,12 +181,6 @@ function Is-NetworkAvailable {
 $launcherDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $configPath = Join-Path $launcherDir 'launcher.config.json'
 $resolvedManifestUrl = Resolve-ManifestUrl -ExplicitManifestUrl $ManifestUrl -ConfigPath $configPath
-$usingDefaultManifest = ($resolvedManifestUrl -eq $script:DefaultManifestUrl)
-
-if ($usingDefaultManifest) {
-  Write-LauncherLog -Level 'WARN' -Message "Using default placeholder manifest URL: $resolvedManifestUrl"
-  Write-LauncherLog -Level 'WARN' -Message "Create launcher.config.json from launcher.config.example.json and set `manifestUrl`."
-}
 
 $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
 $channelRoot = Join-Path (Join-Path $localAppData $script:LauncherName) $Channel
@@ -241,9 +235,6 @@ try {
 
   if ($null -eq $manifest) {
     if (-not $localExePath) {
-      if ($usingDefaultManifest) {
-        throw "Manifest URL is still placeholder ($resolvedManifestUrl). Configure launcher.config.json with your real latest.json URL."
-      }
       throw "Cannot reach update server ($resolvedManifestUrl) and no local runtime available."
     }
     Write-LauncherLog -Level 'WARN' -Message 'Starting local runtime because manifest is unavailable.'

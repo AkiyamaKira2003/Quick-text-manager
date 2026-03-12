@@ -2,7 +2,7 @@
   "app": "QuickText",
   "channel": "stable",
   "version": "0.1.0",
-  "url": "https://cdn.example.com/quicktext/QuickText-win-x64.zip",
+  "url": "https://github.com/AkiyamaKira2003/Quick-text-manager/releases/download/v0.1.0/QuickText-win-x64.zip",
   "sha256": "replace_with_sha256",
   "size": 123456789,
   "entryExe": "QuickText.exe",

@@ -12,6 +12,7 @@ build/
 .cache/
 .turbo/
 *.tsbuildinfo
+.tmp-asar-list.txt
 *.log
 *.csv
 tmp-*.log

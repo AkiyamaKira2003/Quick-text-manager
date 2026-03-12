@@ -30,16 +30,20 @@ This triggers workflow:
 
 ## 4. Configure launcher manifest URL
 
-After first release, set:
+Default launcher already uses:
+
+- `https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest/download/latest.json`
+
+Optional override:
 
 - `launcher/launcher.config.json`
 
 ```json
 {
-  "manifestUrl": "https://github.com/<owner>/<repo>/releases/download/v0.1.0/latest.json"
+  "manifestUrl": "https://raw.githubusercontent.com/AkiyamaKira2003/Quick-text-manager/main/latest.json"
 }
 ```
 
 If you prefer branch-based manifest, host `latest.json` at:
 
-- `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/latest.json`
+- `https://raw.githubusercontent.com/AkiyamaKira2003/Quick-text-manager/main/latest.json`

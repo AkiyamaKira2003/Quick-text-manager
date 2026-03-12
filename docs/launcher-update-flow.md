@@ -29,15 +29,15 @@ One-click flow:
 - `sha256`: SHA256 checksum of zip.
 - `entryExe`: executable name inside extracted package (`QuickText.exe`).
 
-Example: [`launcher/latest.example.json`](/C:/Users/esket/Downloads/Tools/QuickText/launcher/latest.example.json)
+Example: [`launcher/latest.example.json`](../launcher/latest.example.json)
 
 ## Release flow
 
 1. Build app folder artifact:
    - `npm run dist:folder`
 2. Build zip + manifest:
-   - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl "https://cdn.example.com/quicktext/"`
-3. Upload:
+   - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl "https://github.com/AkiyamaKira2003/Quick-text-manager/releases/download/v0.1.0/"`
+3. Upload (manual only if you do not use GitHub Actions release workflow):
    - `dist/QuickText-win-x64.zip`
    - `dist/latest.json`
 4. Distribute launcher:
@@ -72,8 +72,11 @@ Script arguments:
 
 Local config:
 
+- Default (no config needed):
+  - `https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest/download/latest.json`
 - Copy `launcher/launcher.config.example.json` to `launcher/launcher.config.json`.
 - Set `manifestUrl` to your real hosted `latest.json` URL.
+  - Current repo example: `https://raw.githubusercontent.com/AkiyamaKira2003/Quick-text-manager/main/latest.json`
 
 ## When to switch to integrated Electron updater
 
