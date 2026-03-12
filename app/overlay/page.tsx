@@ -634,7 +634,7 @@ function OverlayPageComponent() {
   }, [getLiveOffsets, queueDraftOffsets, selectedElement, settings?.appEnabled, settings?.overlayInteractive, settingsRef, updateSettings])
 
   useEffect(() => {
-    if (!activeItemText || !sendHotkey || !appToggleHotkey || !overlayToggleHotkey || !mainToggleHotkey || !overlayEditHotkey) return
+    if (!sendHotkey || !appToggleHotkey || !overlayToggleHotkey || !mainToggleHotkey || !overlayEditHotkey) return
 
     const payload: PythonConfigurePayload = {
       text: activeItemText,

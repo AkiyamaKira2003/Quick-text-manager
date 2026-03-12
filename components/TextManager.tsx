@@ -4,6 +4,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, ty
 import { PromptDialog, type PromptDialogSubmit } from '@/components/PromptDialog'
 import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { t } from '@/lib/i18n'
+import { getKoreanTypingHint } from '@/lib/hangul-ime'
 import type { Settings, TextItem } from '@/types'
 
 const VIRTUALIZATION_THRESHOLD = 80
@@ -51,7 +52,11 @@ export default function TextManager({ settings, updateSettings }: Props) {
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => {
         if (!keyword) return true
-        return item.text.toLowerCase().includes(keyword) || item.note.toLowerCase().includes(keyword)
+        return (
+          item.text.toLowerCase().includes(keyword) ||
+          item.note.toLowerCase().includes(keyword) ||
+          getKoreanTypingHint(item.text).toLowerCase().includes(keyword)
+        )
       })
   }, [deferredQuery, settings.items])
 
@@ -332,6 +337,7 @@ export default function TextManager({ settings, updateSettings }: Props) {
             {filtered.slice(virtualWindow.startIndex, virtualWindow.endIndex + 1).map(({ item, index }, localIndex) => {
               const absoluteIndex = virtualWindow.startIndex + localIndex
               const selected = settings.selectedIndex === index
+              const koreanTypingHint = getKoreanTypingHint(item.text)
               return (
                 <article
                   key={`${item.text}-${index}`}
@@ -352,6 +358,9 @@ export default function TextManager({ settings, updateSettings }: Props) {
                 >
                   <p className="text-[15px] font-semibold text-[var(--qt-fg)] break-words whitespace-pre-wrap">{item.text}</p>
                   {item.note ? <p className="mt-1 text-xs text-[var(--qt-muted)] break-words whitespace-pre-wrap">{item.note}</p> : null}
+                  {koreanTypingHint ? (
+                    <p className="mt-1 text-[11px] text-cyan-300/85 break-words whitespace-pre-wrap">⌨ {koreanTypingHint}</p>
+                  ) : null}
                 </article>
               )
             })}
@@ -360,6 +369,7 @@ export default function TextManager({ settings, updateSettings }: Props) {
           <div className="space-y-2">
             {filtered.map(({ item, index }) => {
               const selected = settings.selectedIndex === index
+              const koreanTypingHint = getKoreanTypingHint(item.text)
               return (
                 <article
                   key={`${item.text}-${index}`}
@@ -373,6 +383,9 @@ export default function TextManager({ settings, updateSettings }: Props) {
                 >
                   <p className="text-[15px] font-semibold text-[var(--qt-fg)] break-words whitespace-pre-wrap">{item.text}</p>
                   {item.note ? <p className="mt-1 text-xs text-[var(--qt-muted)] break-words whitespace-pre-wrap">{item.note}</p> : null}
+                  {koreanTypingHint ? (
+                    <p className="mt-1 text-[11px] text-cyan-300/85 break-words whitespace-pre-wrap">⌨ {koreanTypingHint}</p>
+                  ) : null}
                 </article>
               )
             })}
@@ -387,6 +400,9 @@ export default function TextManager({ settings, updateSettings }: Props) {
         description={t(language, 'dialog.addDescription')}
         label={t(language, 'dialog.phraseLabel')}
         noteLabel={t(language, 'dialog.noteLabel')}
+        extraNoteLabel={t(language, 'dialog.koreanTypingLabel')}
+        extraNotePlaceholder={t(language, 'dialog.koreanTypingPlaceholder')}
+        extraNoteBuilder={getKoreanTypingHint}
         submitLabel={t(language, 'dialog.addSubmit')}
         placeholder={t(language, 'dialog.enterTextPlaceholder')}
         notePlaceholder={t(language, 'dialog.notePlaceholder')}
@@ -404,6 +420,9 @@ export default function TextManager({ settings, updateSettings }: Props) {
         description={t(language, 'dialog.editDescription')}
         label={t(language, 'dialog.phraseLabel')}
         noteLabel={t(language, 'dialog.noteLabel')}
+        extraNoteLabel={t(language, 'dialog.koreanTypingLabel')}
+        extraNotePlaceholder={t(language, 'dialog.koreanTypingPlaceholder')}
+        extraNoteBuilder={getKoreanTypingHint}
         defaultValue={selectedItem?.text ?? ''}
         defaultNote={selectedItem?.note ?? ''}
         submitLabel={t(language, 'dialog.saveSubmit')}

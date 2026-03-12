@@ -91,7 +91,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'overlay.toggle_visibility',
     category: 'overlay',
     context: 'global',
-    defaultCombo: 'Tab',
+    defaultCombo: 'Ctrl+Shift+1',
     settingKey: 'overlayToggleHotkey',
     labelKey: 'hk.actionOverlayToggle',
     descriptionKey: 'hk.descOverlayToggle',
@@ -111,7 +111,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'overlay.toggle_interaction',
     category: 'overlay',
     context: 'global',
-    defaultCombo: 'Shift+1',
+    defaultCombo: 'Tab',
     settingKey: 'overlayEditHotkey',
     labelKey: 'hk.actionOverlayEdit',
     descriptionKey: 'hk.descOverlayEdit',
@@ -121,7 +121,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'text.send_current',
     category: 'text',
     context: 'global',
-    defaultCombo: 'Shift',
+    defaultCombo: '4',
     settingKey: 'sendHotkey',
     labelKey: 'hk.actionSendCurrent',
     descriptionKey: 'hk.descSendCurrent',
@@ -189,9 +189,10 @@ export function normalizeCombo(value: unknown): string | null {
     key = part
   }
 
-  if (!key) return null
-
   const orderedModifiers = MODIFIER_ORDER.filter((item) => modifiers.has(item))
+  if (!key) {
+    return orderedModifiers.length > 0 ? orderedModifiers.join('+') : null
+  }
   return orderedModifiers.length > 0 ? `${orderedModifiers.join('+')}+${key}` : key
 }
 
@@ -318,14 +319,14 @@ export function findHotkeyConflict(
   bindings: ReadonlyArray<BindingLike>,
   excludeActionId?: HotkeyActionId,
 ) {
-  const normalizedCandidate = normalizeCombo(candidate.combo)
-  if (!normalizedCandidate) return null
+  const parsedCandidate = parseNormalizedCombo(candidate.combo)
+  if (!parsedCandidate) return null
 
   for (const current of bindings) {
     if (excludeActionId && current.actionId === excludeActionId) continue
-    const normalizedCurrent = normalizeCombo(current.combo)
-    if (!normalizedCurrent) continue
-    if (normalizedCurrent !== normalizedCandidate) continue
+    const parsedCurrent = parseNormalizedCombo(current.combo)
+    if (!parsedCurrent) continue
+    if (!hotkeysCanConflict(parsedCandidate, parsedCurrent)) continue
     if (!contextsOverlap(candidate.context, current.context)) continue
     return current
   }
@@ -362,9 +363,61 @@ function getActionComboWithOverrides(actionId: HotkeyActionId, overrides: Hotkey
   return ACTION_DEFAULT_COMBO.get(actionId) ?? ''
 }
 
+type ParsedCombo = {
+  normalized: string
+  key: string | null
+  modifiers: Set<string>
+}
+
+function parseNormalizedCombo(value: string): ParsedCombo | null {
+  const normalized = normalizeCombo(value)
+  if (!normalized) return null
+
+  const parts = normalized.split('+').filter((part) => part.length > 0)
+  if (parts.length === 0) return null
+
+  const modifiers = new Set<string>()
+  let key: string | null = null
+  for (const part of parts) {
+    if (MODIFIER_SET.has(part)) {
+      modifiers.add(part)
+      continue
+    }
+    if (key) return null
+    key = part
+  }
+
+  return { normalized, key, modifiers }
+}
+
+function hotkeysCanConflict(a: ParsedCombo, b: ParsedCombo) {
+  if (a.normalized === b.normalized) return true
+
+  if (!a.key && !b.key) {
+    return modifiersSubsetOf(a.modifiers, b.modifiers) || modifiersSubsetOf(b.modifiers, a.modifiers)
+  }
+
+  if (!a.key && b.key) {
+    return modifiersSubsetOf(a.modifiers, b.modifiers)
+  }
+
+  if (a.key && !b.key) {
+    return modifiersSubsetOf(b.modifiers, a.modifiers)
+  }
+
+  return false
+}
+
+function modifiersSubsetOf(left: Set<string>, right: Set<string>) {
+  for (const item of left) {
+    if (!right.has(item)) return false
+  }
+  return true
+}
+
 function enforceUniqueCombos<T extends Pick<Settings, HotkeySettingKey | 'hotkeyOverrides'>>(input: T): T {
   const result = { ...input }
-  const seen = new Set<string>()
+  const seen: ParsedCombo[] = []
 
   for (const action of HOTKEY_ACTIONS) {
     const currentValue = normalizeCombo(result[action.settingKey])
@@ -373,14 +426,22 @@ function enforceUniqueCombos<T extends Pick<Settings, HotkeySettingKey | 'hotkey
     const candidate = currentValue ?? normalizedFallback
     if (!candidate) continue
 
-    if (seen.has(candidate) || isReservedCombo(candidate)) {
+    const parsedCandidate = parseNormalizedCombo(candidate)
+    const candidateConflicts = parsedCandidate ? seen.some((item) => hotkeysCanConflict(item, parsedCandidate)) : false
+
+    if (candidateConflicts || isReservedCombo(candidate)) {
       result[action.settingKey] = normalizedFallback
       delete result.hotkeyOverrides[action.id]
-      seen.add(normalizedFallback)
+      const parsedFallback = parseNormalizedCombo(normalizedFallback)
+      if (parsedFallback) {
+        seen.push(parsedFallback)
+      }
       continue
     }
 
-    seen.add(candidate)
+    if (parsedCandidate) {
+      seen.push(parsedCandidate)
+    }
     result[action.settingKey] = candidate
   }
 

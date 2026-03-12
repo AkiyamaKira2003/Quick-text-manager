@@ -30,9 +30,11 @@ CORS(app)
 events_lock = threading.Lock()
 state_lock = threading.Lock()
 hotkey_lock = threading.Lock()
+conversion_cache_lock = threading.Lock()
 events: list[dict[str, Any]] = []
 event_id = 0
 MAX_EVENTS = 400
+conversion_cache: dict[str, tuple[str, bool]] = {}
 DEFAULT_DELAY_RANGE: tuple[float, float] = (0.02, 0.05)
 DEFAULT_SEND_HOTKEY = "4"
 DEFAULT_OVERLAY_TOGGLE_HOTKEY = "ctrl+shift+1"
@@ -42,10 +44,144 @@ DEFAULT_APP_TOGGLE_HOTKEY = "shift+5"
 DEFAULT_PRESS_ENTER = False
 DEFAULT_HOTKEY_DEBOUNCE_MS = 90
 DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS = 120
+IME_KEYSTROKE_DELAY_SECONDS = 0.02
+CONVERSION_CACHE_MAX_ITEMS = 2000
 ACTION_OVERLAY_TOGGLE = "overlay.toggle_visibility"
 ACTION_MAIN_TOGGLE = "main.toggle_visibility"
 ACTION_OVERLAY_EDIT = "overlay.toggle_interaction"
 ACTION_APP_TOGGLE = "app.toggle_enabled"
+
+HANGUL_BASE_CODEPOINT = 0xAC00
+HANGUL_LAST_CODEPOINT = 0xD7A3
+HANGUL_N_COUNT = 588
+HANGUL_T_COUNT = 28
+HANGUL_CHOSEONG = [
+    "ㄱ",
+    "ㄲ",
+    "ㄴ",
+    "ㄷ",
+    "ㄸ",
+    "ㄹ",
+    "ㅁ",
+    "ㅂ",
+    "ㅃ",
+    "ㅅ",
+    "ㅆ",
+    "ㅇ",
+    "ㅈ",
+    "ㅉ",
+    "ㅊ",
+    "ㅋ",
+    "ㅌ",
+    "ㅍ",
+    "ㅎ",
+]
+HANGUL_JUNGSEONG = [
+    "ㅏ",
+    "ㅐ",
+    "ㅑ",
+    "ㅒ",
+    "ㅓ",
+    "ㅔ",
+    "ㅕ",
+    "ㅖ",
+    "ㅗ",
+    "ㅘ",
+    "ㅙ",
+    "ㅚ",
+    "ㅛ",
+    "ㅜ",
+    "ㅝ",
+    "ㅞ",
+    "ㅟ",
+    "ㅠ",
+    "ㅡ",
+    "ㅢ",
+    "ㅣ",
+]
+HANGUL_JONGSEONG = [
+    "",
+    "ㄱ",
+    "ㄲ",
+    "ㄳ",
+    "ㄴ",
+    "ㄵ",
+    "ㄶ",
+    "ㄷ",
+    "ㄹ",
+    "ㄺ",
+    "ㄻ",
+    "ㄼ",
+    "ㄽ",
+    "ㄾ",
+    "ㄿ",
+    "ㅀ",
+    "ㅁ",
+    "ㅂ",
+    "ㅄ",
+    "ㅅ",
+    "ㅆ",
+    "ㅇ",
+    "ㅈ",
+    "ㅊ",
+    "ㅋ",
+    "ㅌ",
+    "ㅍ",
+    "ㅎ",
+]
+JAMO_TO_2BEOLSIK = {
+    "ㄱ": "r",
+    "ㄲ": "R",
+    "ㄳ": "rt",
+    "ㄴ": "s",
+    "ㄵ": "sw",
+    "ㄶ": "sg",
+    "ㄷ": "e",
+    "ㄸ": "E",
+    "ㄹ": "f",
+    "ㄺ": "fr",
+    "ㄻ": "fa",
+    "ㄼ": "fq",
+    "ㄽ": "ft",
+    "ㄾ": "fx",
+    "ㄿ": "fv",
+    "ㅀ": "fg",
+    "ㅁ": "a",
+    "ㅂ": "q",
+    "ㅃ": "Q",
+    "ㅄ": "qt",
+    "ㅅ": "t",
+    "ㅆ": "T",
+    "ㅇ": "d",
+    "ㅈ": "w",
+    "ㅉ": "W",
+    "ㅊ": "c",
+    "ㅋ": "z",
+    "ㅌ": "x",
+    "ㅍ": "v",
+    "ㅎ": "g",
+    "ㅏ": "k",
+    "ㅐ": "o",
+    "ㅑ": "i",
+    "ㅒ": "O",
+    "ㅓ": "j",
+    "ㅔ": "p",
+    "ㅕ": "u",
+    "ㅖ": "P",
+    "ㅗ": "h",
+    "ㅘ": "hk",
+    "ㅙ": "ho",
+    "ㅚ": "hl",
+    "ㅛ": "y",
+    "ㅜ": "n",
+    "ㅝ": "nj",
+    "ㅞ": "np",
+    "ㅟ": "nl",
+    "ㅠ": "b",
+    "ㅡ": "m",
+    "ㅢ": "ml",
+    "ㅣ": "l",
+}
 
 send_config = {
     "text": "",
@@ -162,18 +298,110 @@ def parse_hotkey_debounce_ms(raw: Any, fallback: int) -> int:
     return value
 
 
+def convert_hangul_to_2beolsik(text: str) -> tuple[str, bool]:
+    chunks: list[str] = []
+    converted = False
+
+    for char in text:
+        codepoint = ord(char)
+        if HANGUL_BASE_CODEPOINT <= codepoint <= HANGUL_LAST_CODEPOINT:
+            syllable_index = codepoint - HANGUL_BASE_CODEPOINT
+            choseong_index = syllable_index // HANGUL_N_COUNT
+            jungseong_index = (syllable_index % HANGUL_N_COUNT) // HANGUL_T_COUNT
+            jongseong_index = syllable_index % HANGUL_T_COUNT
+
+            choseong = HANGUL_CHOSEONG[choseong_index]
+            jungseong = HANGUL_JUNGSEONG[jungseong_index]
+            chunks.append(JAMO_TO_2BEOLSIK[choseong])
+            chunks.append(JAMO_TO_2BEOLSIK[jungseong])
+
+            jongseong = HANGUL_JONGSEONG[jongseong_index]
+            if jongseong:
+                chunks.append(JAMO_TO_2BEOLSIK[jongseong])
+
+            converted = True
+            continue
+
+        mapped = JAMO_TO_2BEOLSIK.get(char)
+        if mapped:
+            chunks.append(mapped)
+            converted = True
+            continue
+
+        chunks.append(char)
+
+    return "".join(chunks), converted
+
+
+def resolve_2beolsik_sequence(text: str) -> tuple[str, bool]:
+    with conversion_cache_lock:
+        cached = conversion_cache.get(text)
+        if cached is not None:
+            return cached
+
+    converted = convert_hangul_to_2beolsik(text)
+
+    with conversion_cache_lock:
+        existing = conversion_cache.get(text)
+        if existing is not None:
+            return existing
+
+        if len(conversion_cache) >= CONVERSION_CACHE_MAX_ITEMS:
+            oldest_key = next(iter(conversion_cache.keys()), None)
+            if oldest_key is not None:
+                conversion_cache.pop(oldest_key, None)
+        conversion_cache[text] = converted
+        return converted
+
+
+def warmup_2beolsik_cache(text: str) -> None:
+    if not text:
+        return
+    resolve_2beolsik_sequence(text)
+
+
+def press_ime_token(token: str) -> None:
+    if not token:
+        return
+
+    if token == " ":
+        keyboard_lib.press_and_release("space")
+        return
+    if token == "\n":
+        keyboard_lib.press_and_release("enter")
+        return
+    if token == "\t":
+        keyboard_lib.press_and_release("tab")
+        return
+
+    if len(token) == 1 and "A" <= token <= "Z":
+        keyboard_lib.press_and_release(f"shift+{token.lower()}")
+        return
+
+    try:
+        keyboard_lib.press_and_release(token)
+    except Exception:
+        keyboard_lib.write(token)
+
+
+def type_ime_keystrokes(sequence: str) -> None:
+    for token in sequence:
+        press_ime_token(token)
+        time.sleep(IME_KEYSTROKE_DELAY_SECONDS)
+
+
 def type_text(text: str, delay_range: tuple[float, float], press_enter: bool) -> None:
     if keyboard_lib is None:
         raise RuntimeError("keyboard module unavailable")
 
     jitter = random.uniform(delay_range[0], delay_range[1])
-    try:
-        # Prefer explicit unicode path to improve non-ASCII delivery in games/apps.
-        keyboard_lib.write(text, exact=True)
-    except TypeError:
+    sequence, has_hangul = resolve_2beolsik_sequence(text)
+    if has_hangul:
+        # Korean game chats often need IME-style key events, not direct unicode injection.
+        type_ime_keystrokes(sequence)
+    else:
         keyboard_lib.write(text)
-    except Exception:
-        keyboard_lib.write(text)
+
     if press_enter:
         keyboard_lib.press_and_release("enter")
     time.sleep(jitter)
@@ -505,6 +733,8 @@ def configure():
             next_hotkey_debounce_ms = parse_hotkey_debounce_ms(data.get("hotkey_debounce_ms"), next_hotkey_debounce_ms)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    warmup_2beolsik_cache(next_text)
 
     with state_lock:
         send_config["text"] = next_text

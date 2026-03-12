@@ -1630,20 +1630,23 @@ function getActionComboWithOverrides(actionId, overrides) {
 
 function enforceUniqueHotkeys(patch) {
   const next = { ...patch, hotkeyOverrides: { ...(patch.hotkeyOverrides || {}) } }
-  const seen = new Set()
+  const seen = []
 
   for (const action of HOTKEY_ACTIONS) {
     let combo = normalizeHotkey(next[action.settingKey], action.defaultCombo)
     let token = normalizeHotkeyToken(combo)
+    let parsed = parseHotkeyComboParts(combo)
+    const hasConflict = parsed ? seen.some((current) => hotkeysCanConflict(current, parsed)) : false
 
-    if (!token || seen.has(token) || isReservedHotkey(combo)) {
+    if (!token || !parsed || hasConflict || isReservedHotkey(combo)) {
       combo = action.defaultCombo
       token = normalizeHotkeyToken(combo)
+      parsed = parseHotkeyComboParts(combo)
       delete next.hotkeyOverrides[action.id]
     }
 
     next[action.settingKey] = combo
-    if (token) seen.add(token)
+    if (token && parsed) seen.push(parsed)
   }
 
   return next
@@ -1677,6 +1680,65 @@ function normalizeHotkeyToken(value) {
   return String(value || '')
     .replace(/\s+/g, '')
     .toLowerCase()
+}
+
+function parseHotkeyComboParts(combo) {
+  const raw = String(combo || '').trim()
+  if (!raw) return null
+  const chunks = raw
+    .split('+')
+    .map((item) => normalizeHotkeyToken(item))
+    .filter((item) => item.length > 0)
+
+  if (!chunks.length) return null
+
+  const modifiers = new Set()
+  let key = null
+  for (const chunk of chunks) {
+    const token = toCanonicalModifierToken(chunk)
+    if (token) {
+      modifiers.add(token)
+      continue
+    }
+    if (key) return null
+    key = chunk
+  }
+
+  return { modifiers, key }
+}
+
+function toCanonicalModifierToken(token) {
+  if (token === 'ctrl' || token === 'control' || token === 'cmdorctrl') return 'ctrl'
+  if (token === 'shift') return 'shift'
+  if (token === 'alt' || token === 'option') return 'alt'
+  if (token === 'meta' || token === 'cmd' || token === 'command' || token === 'super' || token === 'win') return 'meta'
+  return ''
+}
+
+function hotkeysCanConflict(a, b) {
+  if (!a || !b) return false
+
+  const sameKey = (a.key || '') === (b.key || '')
+  const sameModifiers = modifiersSubsetOf(a.modifiers, b.modifiers) && modifiersSubsetOf(b.modifiers, a.modifiers)
+  if (sameKey && sameModifiers) return true
+
+  if (!a.key && !b.key) {
+    return modifiersSubsetOf(a.modifiers, b.modifiers) || modifiersSubsetOf(b.modifiers, a.modifiers)
+  }
+  if (!a.key && b.key) {
+    return modifiersSubsetOf(a.modifiers, b.modifiers)
+  }
+  if (a.key && !b.key) {
+    return modifiersSubsetOf(b.modifiers, a.modifiers)
+  }
+  return false
+}
+
+function modifiersSubsetOf(left, right) {
+  for (const item of left) {
+    if (!right.has(item)) return false
+  }
+  return true
 }
 
 function clampInt(value, min, max, fallback) {
@@ -2785,43 +2847,51 @@ function resolveBundledPythonServiceExePath() {
 
 function getPythonLaunchPlans(scriptPath, bundledExePath = '') {
   const plans = []
-  if (bundledExePath) {
-    plans.push({
-      command: bundledExePath,
-      args: [],
-      label: `bundled (${path.basename(bundledExePath)})`,
-      cwd: path.dirname(bundledExePath),
-    })
+  const scriptLaunchPlans = []
+  if (scriptPath) {
+    const explicitBinary = String(process.env.QT_PYTHON_BIN || '').trim()
+    if (explicitBinary) {
+      scriptLaunchPlans.push({
+        command: explicitBinary,
+        args: [scriptPath],
+        label: explicitBinary,
+        cwd: path.dirname(scriptPath),
+      })
+    }
+
+    if (process.platform === 'win32') {
+      scriptLaunchPlans.push(
+        { command: 'py', args: ['-3', scriptPath], label: 'py -3', cwd: path.dirname(scriptPath) },
+        { command: 'py', args: [scriptPath], label: 'py', cwd: path.dirname(scriptPath) },
+        { command: 'python', args: [scriptPath], label: 'python', cwd: path.dirname(scriptPath) },
+        { command: 'python3', args: [scriptPath], label: 'python3', cwd: path.dirname(scriptPath) },
+      )
+    } else {
+      scriptLaunchPlans.push(
+        { command: 'python3', args: [scriptPath], label: 'python3', cwd: path.dirname(scriptPath) },
+        { command: 'python', args: [scriptPath], label: 'python', cwd: path.dirname(scriptPath) },
+      )
+    }
   }
 
-  if (!scriptPath) {
+  const bundledLaunchPlan = bundledExePath
+    ? {
+        command: bundledExePath,
+        args: [],
+        label: `bundled (${path.basename(bundledExePath)})`,
+        cwd: path.dirname(bundledExePath),
+      }
+    : null
+
+  const preferScriptInDev = !app.isPackaged
+  if (preferScriptInDev) {
+    plans.push(...scriptLaunchPlans)
+    if (bundledLaunchPlan) plans.push(bundledLaunchPlan)
     return plans
   }
 
-  const explicitBinary = String(process.env.QT_PYTHON_BIN || '').trim()
-  if (explicitBinary) {
-    plans.push({
-      command: explicitBinary,
-      args: [scriptPath],
-      label: explicitBinary,
-      cwd: path.dirname(scriptPath),
-    })
-  }
-
-  if (process.platform === 'win32') {
-    plans.push(
-      { command: 'py', args: ['-3', scriptPath], label: 'py -3', cwd: path.dirname(scriptPath) },
-      { command: 'py', args: [scriptPath], label: 'py', cwd: path.dirname(scriptPath) },
-      { command: 'python', args: [scriptPath], label: 'python', cwd: path.dirname(scriptPath) },
-      { command: 'python3', args: [scriptPath], label: 'python3', cwd: path.dirname(scriptPath) },
-    )
-    return plans
-  }
-
-  plans.push(
-    { command: 'python3', args: [scriptPath], label: 'python3', cwd: path.dirname(scriptPath) },
-    { command: 'python', args: [scriptPath], label: 'python', cwd: path.dirname(scriptPath) },
-  )
+  if (bundledLaunchPlan) plans.push(bundledLaunchPlan)
+  plans.push(...scriptLaunchPlans)
   return plans
 }
 
@@ -4073,6 +4143,7 @@ function handleElectronHotkeyAction(actionId) {
   if (shouldSuppressElectronHotkeyAction(actionId)) return
   try {
     if (actionId === 'app.toggle_enabled') {
+      if (managedPythonHealthOk && !FORCE_ELECTRON_HOTKEY_FALLBACK) return
       applyAppToggleHotkeyAction()
       return
     }

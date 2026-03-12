@@ -29,6 +29,9 @@ type PromptDialogProps = {
   defaultNote?: string
   placeholder?: string
   notePlaceholder?: string
+  extraNoteLabel?: string
+  extraNotePlaceholder?: string
+  extraNoteBuilder?: (text: string) => string
   submitLabel?: string
   cancelLabel?: string
   savingLabel?: string
@@ -48,6 +51,9 @@ export function PromptDialog({
   defaultNote = '',
   placeholder = 'Enter text',
   notePlaceholder = 'Optional note',
+  extraNoteLabel = '',
+  extraNotePlaceholder = '',
+  extraNoteBuilder,
   submitLabel = 'Save',
   cancelLabel = 'Cancel',
   savingLabel = 'Saving...',
@@ -69,6 +75,8 @@ export function PromptDialog({
   }, [open, defaultValue, defaultNote])
 
   const canSubmit = useMemo(() => value.trim().length > 0 && !isSubmitting, [value, isSubmitting])
+  const extraNote = useMemo(() => (extraNoteBuilder ? extraNoteBuilder(value) : ''), [extraNoteBuilder, value])
+  const showExtraNote = !!extraNoteBuilder && !!extraNoteLabel
 
   const handleSubmit = async () => {
     const trimmedValue = value.trim()
@@ -124,6 +132,19 @@ export function PromptDialog({
               placeholder={notePlaceholder}
             />
           </div>
+
+          {showExtraNote ? (
+            <div className="grid gap-2">
+              <Label htmlFor="prompt-extra-note">{extraNoteLabel}</Label>
+              <Input
+                id="prompt-extra-note"
+                value={extraNote}
+                readOnly
+                placeholder={extraNotePlaceholder}
+                className="text-[11px] tracking-wide text-cyan-300 placeholder:text-[var(--qt-muted)]"
+              />
+            </div>
+          ) : null}
         </div>
 
         {errorText ? <p className="text-sm text-red-300">{errorText}</p> : null}

@@ -5,11 +5,11 @@ import {
   normalizeHotkeyOverrides,
 } from '@/lib/hotkeys'
 
-const OVERLAY_TOGGLE_HOTKEY = 'Tab'
+const OVERLAY_TOGGLE_HOTKEY = 'Ctrl+Shift+1'
 const MAIN_TOGGLE_HOTKEY = 'Delete'
-const OVERLAY_EDIT_HOTKEY = 'Shift+1'
+const OVERLAY_EDIT_HOTKEY = 'Tab'
 const APP_TOGGLE_HOTKEY = 'Shift+5'
-const SEND_HOTKEY = 'Shift'
+const SEND_HOTKEY = '4'
 const OVERLAY_FULLSCREEN_SIZE = 10000
 
 const defaultItems: TextItem[] = [

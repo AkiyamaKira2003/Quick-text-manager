@@ -78,20 +78,9 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
     const action = HOTKEY_ACTIONS.find((item) => item.id === recordingActionId)
     if (!action) return
 
-    const handleKeydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        setRecordingActionId(null)
-        setBindStatus('')
-        return
-      }
+    let pendingModifier: string | null = null
 
-      if (isTypingTarget(event.target)) return
-      if (event.repeat || event.isComposing) return
-      const combo = comboFromKeyboardEvent(event)
-      if (!combo) return
-      event.preventDefault()
-
+    const applyCombo = (combo: string) => {
       const formattedCombo = formatComboForDisplay(combo)
       if (isReservedCombo(combo)) {
         setBindStatus(t(language, 'hk.errorReserved', { combo: formattedCombo }))
@@ -125,9 +114,47 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
       setBindStatus(t(language, 'hk.saved', { combo: formattedCombo }))
     }
 
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setRecordingActionId(null)
+        setBindStatus('')
+        return
+      }
+
+      if (isTypingTarget(event.target)) return
+      if (event.repeat || event.isComposing) return
+      const modifierToken = getModifierToken(event)
+      if (modifierToken) {
+        pendingModifier = modifierToken
+        event.preventDefault()
+        return
+      }
+      const combo = comboFromKeyboardEvent(event)
+      if (!combo) return
+      event.preventDefault()
+      pendingModifier = null
+      applyCombo(combo)
+    }
+
+    const handleKeyup = (event: KeyboardEvent) => {
+      if (!pendingModifier) return
+      const modifierToken = getModifierToken(event)
+      if (!modifierToken) return
+      if (modifierToken !== pendingModifier) {
+        pendingModifier = null
+        return
+      }
+      pendingModifier = null
+      event.preventDefault()
+      applyCombo(modifierToken)
+    }
+
     window.addEventListener('keydown', handleKeydown, true)
+    window.addEventListener('keyup', handleKeyup, true)
     return () => {
       window.removeEventListener('keydown', handleKeydown, true)
+      window.removeEventListener('keyup', handleKeyup, true)
     }
   }, [bindingRecords, language, recordingActionId, settings, updateSettings])
 
@@ -220,4 +247,13 @@ function toContextTitle(value: string) {
   if (value === 'screen') return 'Screen'
   if (value === 'modal') return 'Modal'
   return 'Editor'
+}
+
+function getModifierToken(event: KeyboardEvent): 'Shift' | 'Ctrl' | 'Alt' | 'Meta' | null {
+  const code = String(event.code || '')
+  if (code === 'ShiftLeft' || code === 'ShiftRight') return 'Shift'
+  if (code === 'ControlLeft' || code === 'ControlRight') return 'Ctrl'
+  if (code === 'AltLeft' || code === 'AltRight') return 'Alt'
+  if (code === 'MetaLeft' || code === 'MetaRight') return 'Meta'
+  return null
 }
