@@ -21,13 +21,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Install dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build Windows unpacked app
-        run: npm run dist:folder
+        run: pnpm run dist:folder
 
       - name: Build launcher zip + latest.json
         shell: pwsh

@@ -268,7 +268,7 @@ export default function MainPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="relative inline-flex max-w-full flex-col group/title">
-                    <h1 className="truncate text-xl font-bold tracking-wide text-[var(--qt-fg)]">{t(language, 'main.title')}</h1>
+                    <h1 className="truncate text-2xl font-bold tracking-wide text-[var(--qt-fg)] sm:text-3xl">{t(language, 'main.title')}</h1>
                     <p className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-max max-w-[min(40rem,80vw)] rounded-md border border-[var(--qt-border)] bg-[var(--qt-surface)] px-2.5 py-1 text-xs text-[var(--qt-muted)] opacity-0 qt-elev-soft qt-motion qt-motion-fast translate-y-1 group-hover/title:translate-y-0 group-hover/title:opacity-100">
                       {t(language, 'main.compactIntro')}
                     </p>

@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="public/logo.jpg" alt="QuickText Logo" width="920" />
+  <img src="public/logo.jpg" alt="Quick Text Manager Logo" width="920" />
 </p>
 
 <p align="center">
-  <img src="public/icon.png" alt="QuickText Icon" width="96" />
+  <img src="public/icon.png" alt="Quick Text Manager Icon" width="96" />
 </p>
 
-<h1 align="center">QuickText</h1>
+<h1 align="center">QUICK TEXT MANAGER</h1>
 
 <p align="center">
   Desktop overlay cho game/chat với mục tiêu: <strong>gửi nhanh - quản lý gọn - thao tác 1 chạm</strong>.
@@ -16,9 +16,9 @@
   <a href="https://github.com/AkiyamaKira2003/Quick-text-manager/releases/latest">Download Latest Release</a>
 </p>
 
-## QuickText Là Gì?
+## Quick Text Manager Là Gì?
 
-QuickText là ứng dụng desktop giúp bạn quản lý câu chat mẫu và hiển thị overlay nổi trên màn hình, để chuyển câu và gửi câu cực nhanh trong lúc đang chơi game hoặc thao tác toàn màn hình.
+Quick Text Manager là ứng dụng desktop giúp bạn quản lý câu chat mẫu và hiển thị overlay nổi trên màn hình, để chuyển câu và gửi câu cực nhanh trong lúc đang chơi game hoặc thao tác toàn màn hình.
 
 Mục tiêu của dự án không chỉ là gửi text nhanh, mà còn là giữ trải nghiệm mượt, ít gián đoạn và dễ làm chủ bằng hotkey.
 
@@ -58,7 +58,7 @@ Mục tiêu của dự án không chỉ là gửi text nhanh, mà còn là giữ
 **Kira**  
 GitHub: [@AkiyamaKira2003](https://github.com/AkiyamaKira2003)
 
-QuickText được xây để giải quyết bài toán thực tế: cần phản hồi nhanh trong game nhưng vẫn giữ được tính tự nhiên, dễ kiểm soát và dễ tùy biến.
+Quick Text Manager được xây để giải quyết bài toán thực tế: cần phản hồi nhanh trong game nhưng vẫn giữ được tính tự nhiên, dễ kiểm soát và dễ tùy biến.
 
 ## Giấy Phép
 
