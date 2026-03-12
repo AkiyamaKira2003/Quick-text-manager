@@ -1,0 +1,23 @@
+# v0 runtime files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+
+# Common ignores
+node_modules/
+.next/
+.next-*/
+dist/
+build/
+.cache/
+.turbo/
+*.tsbuildinfo
+*.log
+*.csv
+tmp-*.log
+startup-*.log
+startup-*.csv
+output.txt
+python/__pycache__/
+.env*.local
+.DS_Store
