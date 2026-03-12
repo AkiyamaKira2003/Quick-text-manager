@@ -23,6 +23,35 @@ export type EffectiveHotkeyBinding = {
 
 const MODIFIER_ORDER = ['Ctrl', 'Shift', 'Alt', 'Meta'] as const
 const MODIFIER_SET = new Set<string>(MODIFIER_ORDER)
+const MODIFIER_CODES = new Set(['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight'])
+const CODE_TO_KEY_TOKEN: Record<string, string> = {
+  Backquote: '`',
+  Minus: '-',
+  Equal: '=',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Tab: 'Tab',
+  Enter: 'Enter',
+  Space: 'Space',
+  Backspace: 'Backspace',
+  Delete: 'Delete',
+  Insert: 'Insert',
+  Home: 'Home',
+  End: 'End',
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
+  ArrowUp: 'ArrowUp',
+  ArrowDown: 'ArrowDown',
+  ArrowLeft: 'ArrowLeft',
+  ArrowRight: 'ArrowRight',
+  Escape: 'Esc',
+}
 const SHIFTED_KEY_ALIASES: Record<string, string> = {
   '~': '`',
   '!': '1',
@@ -169,7 +198,7 @@ export function normalizeCombo(value: unknown): string | null {
 export function comboFromKeyboardEvent(event: KeyboardEvent): string | null {
   if (event.isComposing) return null
 
-  const key = normalizeKeyToken(event.key)
+  const key = getHotkeyTokenFromEvent(event)
   if (!key || MODIFIER_SET.has(key)) return null
 
   const modifiers: string[] = []
@@ -180,6 +209,14 @@ export function comboFromKeyboardEvent(event: KeyboardEvent): string | null {
 
   const combo = modifiers.length > 0 ? `${modifiers.join('+')}+${key}` : key
   return normalizeCombo(combo)
+}
+
+export function isTypingTarget(target: EventTarget | null) {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  const tagName = element.tagName?.toUpperCase()
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true
+  return !!element.isContentEditable || !!element.closest?.('[contenteditable="true"]')
 }
 
 export function formatComboForDisplay(combo: string) {
@@ -338,6 +375,18 @@ function enforceUniqueCombos<T extends Pick<Settings, HotkeySettingKey | 'hotkey
   }
 
   return result
+}
+
+function getHotkeyTokenFromEvent(event: KeyboardEvent) {
+  const code = typeof event.code === 'string' ? event.code : ''
+  if (MODIFIER_CODES.has(code)) return null
+
+  if (/^digit\d$/i.test(code)) return code.slice(-1)
+  if (/^key[a-z]$/i.test(code)) return code.slice(-1).toUpperCase()
+  if (/^f\d{1,2}$/i.test(code)) return code.toUpperCase()
+  if (CODE_TO_KEY_TOKEN[code]) return CODE_TO_KEY_TOKEN[code]
+
+  return normalizeKeyToken(event.key)
 }
 
 function normalizeKeyToken(input: string) {

@@ -10,6 +10,7 @@ import {
   findHotkeyConflict,
   formatComboForDisplay,
   getEffectiveHotkeyBindings,
+  isTypingTarget,
   isReservedCombo,
 } from '@/lib/hotkeys'
 import type { HotkeyActionId, HotkeyCategory, Settings } from '@/types'
@@ -112,6 +113,7 @@ export default function HotkeyManager({ settings, updateSettings }: HotkeyManage
         return
       }
 
+      if (isTypingTarget(event.target)) return
       if (event.repeat || event.isComposing) return
       const combo = comboFromKeyboardEvent(event)
       if (!combo) return

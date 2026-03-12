@@ -9,6 +9,7 @@ import {
   findHotkeyConflict,
   formatComboForDisplay,
   getEffectiveHotkeyBindings,
+  isTypingTarget,
   isReservedCombo,
 } from '@/lib/hotkeys'
 import { t, type MessageKey } from '@/lib/i18n'
@@ -67,6 +68,7 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
         return
       }
 
+      if (isTypingTarget(event.target)) return
       if (event.repeat || event.isComposing) return
       const combo = comboFromKeyboardEvent(event)
       if (!combo) return

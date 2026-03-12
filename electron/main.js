@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Menu, Tray, nativeImage, dialog, contentTracing } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, Menu, Tray, nativeImage, dialog, contentTracing, globalShortcut } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const net = require('net')
@@ -121,6 +121,7 @@ const OVERLAY_DEFER_BOOT_MS = 260
 const STARTUP_PHASE_LOG_ENABLED = parseBooleanEnv('QT_STARTUP_PHASE_LOG', false)
 const OVERLAY_LIFECYCLE_LOG_ENABLED = parseBooleanEnv('QT_OVERLAY_LIFECYCLE_LOG', false)
 const SKIP_ADMIN_CHECK = parseBooleanEnv('QT_SKIP_ADMIN_CHECK', false)
+const FORCE_ELECTRON_HOTKEY_FALLBACK = parseBooleanEnv('QT_ELECTRON_HOTKEY_FALLBACK', false)
 const AUTO_UPDATE_STARTUP_DELAY_MS = 2800
 const AUTO_UPDATE_FEED_URL = String(process.env.QT_UPDATE_FEED_URL || process.env.ELECTRON_UPDATE_URL || '').trim()
 const PROFILING_MAX_ERROR_LENGTH = 420
@@ -308,6 +309,7 @@ let settingsWritePromise = Promise.resolve()
 let lastSettingsWriteError = null
 let quittingAfterSettingsFlush = false
 let hotkeySignature = ''
+let electronHotkeyRegistrations = []
 let overlayMousePassThrough = true
 let overlayBoundsSignature = ''
 let telemetryWritePromise = Promise.resolve()
@@ -3642,10 +3644,119 @@ function schedulePersistMainBounds() {
   }, 120)
 }
 
+function shouldUseElectronHotkeyFallback() {
+  return app.isPackaged || FORCE_ELECTRON_HOTKEY_FALLBACK
+}
+
+function unregisterElectronHotkeys() {
+  if (!electronHotkeyRegistrations.length) return
+  for (const combo of electronHotkeyRegistrations) {
+    try {
+      globalShortcut.unregister(combo)
+    } catch {
+      // Ignore shortcut teardown errors while re-registering.
+    }
+  }
+  electronHotkeyRegistrations = []
+}
+
+function applyAppToggleHotkeyAction() {
+  const settings = ensureSettings()
+  if (!settings.appEnabled) return
+  settings.appEnabled = false
+  settings.overlayVisible = false
+  settings.overlayInteractive = false
+  overlayMousePassThrough = true
+  void saveSettings(settings)
+  applySettingsToWindows(settings)
+  clearOverlayBootTimer()
+  applyOverlayVisibility(false)
+  maybeTearDownOverlayWindow(settings)
+  broadcastSettings()
+  refreshTrayMenu()
+}
+
+function triggerSendHotkeyAction() {
+  const settings = ensureSettings()
+  if (!settings.appEnabled) return
+  broadcastToWindows('trigger:send')
+}
+
+function handleElectronHotkeyAction(actionId) {
+  try {
+    if (actionId === 'app.toggle_enabled') {
+      applyAppToggleHotkeyAction()
+      return
+    }
+    const settings = ensureSettings()
+    if (!settings.appEnabled) return
+    if (actionId === 'overlay.toggle_visibility') {
+      toggleOverlayVisibility()
+      return
+    }
+    if (actionId === 'main.toggle_visibility') {
+      toggleMainWindowVisibility()
+      return
+    }
+    if (actionId === 'overlay.toggle_interaction') {
+      toggleOverlayInteraction()
+      return
+    }
+    if (actionId === 'text.send_current') {
+      triggerSendHotkeyAction()
+    }
+  } catch (error) {
+    safeConsoleError('[hotkey:fallback] action failed:', actionId, error)
+  }
+}
+
+function registerElectronHotkey(combo, actionId) {
+  if (typeof combo !== 'string' || !combo.trim()) return
+  try {
+    const ok = globalShortcut.register(combo, () => {
+      handleElectronHotkeyAction(actionId)
+    })
+    if (ok) {
+      electronHotkeyRegistrations.push(combo)
+      return
+    }
+    safeConsoleError(`[hotkey:fallback] register failed: ${actionId} => ${combo}`)
+  } catch (error) {
+    safeConsoleError(`[hotkey:fallback] invalid shortcut: ${actionId} => ${combo}`, error)
+  }
+}
+
+function syncElectronHotkeys(settings) {
+  if (!shouldUseElectronHotkeyFallback()) {
+    unregisterElectronHotkeys()
+    return
+  }
+
+  unregisterElectronHotkeys()
+
+  const registrationPlan = [
+    ['app.toggle_enabled', settings.appToggleHotkey],
+    ['overlay.toggle_visibility', settings.overlayToggleHotkey],
+    ['main.toggle_visibility', settings.mainToggleHotkey],
+    ['overlay.toggle_interaction', settings.overlayEditHotkey],
+    ['text.send_current', settings.sendHotkey],
+  ]
+
+  for (const [actionId, combo] of registrationPlan) {
+    registerElectronHotkey(combo, actionId)
+  }
+}
+
 function ensureHotkeys(settings) {
-  const nextSignature = `${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
-  if (nextSignature === hotkeySignature) return
+  const nextSignature = `${settings.appToggleHotkey}|${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
+  if (nextSignature === hotkeySignature) {
+    if (electronHotkeyRegistrations.length === 0 && shouldUseElectronHotkeyFallback()) {
+      syncElectronHotkeys(settings)
+    }
+    return
+  }
   hotkeySignature = nextSignature
+  syncElectronHotkeys(settings)
 }
 
 function toggleOverlayVisibility() {
@@ -4093,7 +4204,9 @@ function cleanupRuntime() {
   pendingSettingsWrite = null
   settingsWritePromise = Promise.resolve()
   lastSettingsWriteError = null
+  unregisterElectronHotkeys()
   hotkeySignature = ''
+  electronHotkeyRegistrations = []
   overlayMousePassThrough = true
   overlayBoundsSignature = ''
   trayMenuSignature = ''
