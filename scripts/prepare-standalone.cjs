@@ -8,7 +8,7 @@ const standaloneRoot = path.join(nextRoot, 'standalone')
 const standaloneMaterializedRoot = path.join(nextRoot, 'standalone-runtime')
 const publicSource = path.join(projectRoot, 'public')
 const publicTarget = path.join(standaloneMaterializedRoot, 'public')
-const runtimeNextTarget = path.join(standaloneMaterializedRoot, '.next')
+const runtimeDistTarget = path.join(standaloneMaterializedRoot, resolvedDistDirName)
 const nextSkipNames = new Set(['cache', 'standalone', 'standalone-materialized', 'standalone-runtime', 'dev', 'diagnostics', 'types'])
 const nextSkipFiles = new Set(['trace', 'trace-build', 'turbopack'])
 
@@ -42,6 +42,7 @@ function materializeStandaloneServerRuntime() {
       const rel = path.relative(standaloneRoot, sourcePath)
       if (!rel || rel === '.') return true
       if (rel === '.next' || rel.startsWith(`.next${path.sep}`)) return false
+      if (rel === resolvedDistDirName || rel.startsWith(`${resolvedDistDirName}${path.sep}`)) return false
       if (rel === 'public' || rel.startsWith(`public${path.sep}`)) return false
       return true
     },
@@ -49,7 +50,7 @@ function materializeStandaloneServerRuntime() {
 }
 
 function copyNextRuntime() {
-  fs.mkdirSync(runtimeNextTarget, { recursive: true })
+  fs.mkdirSync(runtimeDistTarget, { recursive: true })
   const entries = fs.readdirSync(nextRoot, { withFileTypes: true })
 
   for (const entry of entries) {
@@ -57,7 +58,7 @@ function copyNextRuntime() {
     if (nextSkipNames.has(name) || nextSkipFiles.has(name)) continue
 
     const sourcePath = path.join(nextRoot, name)
-    const targetPath = path.join(runtimeNextTarget, name)
+    const targetPath = path.join(runtimeDistTarget, name)
     fs.cpSync(sourcePath, targetPath, { recursive: true, force: true })
   }
 }
@@ -97,7 +98,7 @@ function main() {
   copyNextRuntime()
   copyDirectory(publicSource, publicTarget)
 
-  console.log('[standalone] prepared .next/standalone-runtime with runtime .next and public assets')
+  console.log(`[standalone] prepared ${resolvedDistDirName}/standalone-runtime with runtime ${resolvedDistDirName} and public assets`)
 }
 
 main()

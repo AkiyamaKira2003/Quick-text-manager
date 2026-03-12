@@ -52,10 +52,10 @@ const PACKAGED_RENDERER_MAX_PORT_SCAN = 40
 const PACKAGED_RENDERER_BOOT_TIMEOUT_MS = 45000
 const STARTUP_SPLASH_LABELS = {
   vi: {
-    firstLaunchNotice: 'Lần chạy đầu: app đang tạo cache nên sẽ chậm hơn một chút...',
+    firstLaunchNotice: 'Đang nạp cài đặt QuickText... Nếu là lần chạy đầu, app có thể cần thêm vài giây để chuẩn bị dữ liệu.',
     initializing: 'Đang khởi động QuickText...',
     bootRenderer: 'Đang khởi động renderer...',
-    loadingSettings: 'Đang nạp cài đặt...',
+    loadingSettings: 'Đang nạp cài đặt QuickText...',
     loadingTelemetry: 'Đang khôi phục thống kê...',
     loadingWindows: 'Đang tạo cửa sổ...',
     creatingMain: 'Đang tạo cửa sổ chính...',
@@ -75,7 +75,7 @@ const STARTUP_SPLASH_LABELS = {
     ready: 'Sẵn sàng',
   },
   en: {
-    firstLaunchNotice: 'First launch: building cache, startup may take a bit longer...',
+    firstLaunchNotice: 'Loading QuickText settings... On first launch, the app may need a few extra seconds to prepare data.',
     initializing: 'Booting QuickText...',
     bootRenderer: 'Starting renderer...',
     loadingSettings: 'Loading settings...',
@@ -4190,7 +4190,7 @@ if (hasSingleInstanceLock) {
 
       const settingsLoadPromise = (async () => {
         if (splashShown) {
-          await setStartupSplashStep(0.16, 'loadingSettings')
+          await setStartupSplashStep(0.16, startupFirstLaunch ? 'firstLaunchNotice' : 'loadingSettings')
         }
         await loadSettings()
         logStartupPhase('settings', 'loaded')
