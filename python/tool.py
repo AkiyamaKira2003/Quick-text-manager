@@ -44,6 +44,7 @@ DEFAULT_APP_TOGGLE_HOTKEY = "shift+5"
 DEFAULT_PRESS_ENTER = False
 DEFAULT_HOTKEY_DEBOUNCE_MS = 90
 DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS = 280
+APP_TOGGLE_ACTION_HOTKEY_DEBOUNCE_MS = 1200
 IME_KEYSTROKE_DELAY_SECONDS = 0.02
 CONVERSION_CACHE_MAX_ITEMS = 2000
 HOTKEY_LATCH_RELEASE_TIMEOUT_SECONDS = 2.5
@@ -629,7 +630,13 @@ def trigger_configured_send() -> None:
     start_async_send(text, delay_range, press_enter)
 
 
-def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any, suppress: bool = True) -> tuple[bool, str]:
+def register_hotkey_binding(
+    binding_id: str,
+    hotkey: str,
+    callback: Any,
+    suppress: bool = True,
+    trigger_on_release: bool = False,
+) -> tuple[bool, str]:
     if keyboard_lib is None:
         message = "keyboard module unavailable"
         if KEYBOARD_IMPORT_ERROR:
@@ -655,7 +662,7 @@ def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any, suppres
             handle = keyboard_lib.add_hotkey(
                 hotkey,
                 wrapped_callback,
-                trigger_on_release=False,
+                trigger_on_release=trigger_on_release,
                 suppress=suppress,
             )
         except TypeError:
@@ -707,7 +714,8 @@ def register_send_hotkey(hotkey: str) -> tuple[bool, str]:
 
 
 def register_app_toggle_hotkey(hotkey: str) -> tuple[bool, str]:
-    ok, error = register_action_hotkey(ACTION_APP_TOGGLE, hotkey, suppress=False)
+    # App toggle runs on key release to avoid key-hold auto-repeat loops.
+    ok, error = register_action_hotkey(ACTION_APP_TOGGLE, hotkey, suppress=False, trigger_on_release=True)
     if not ok:
         message = f"{ACTION_APP_TOGGLE} hotkey register failed: {error}"
         set_last_error(message)
@@ -745,7 +753,7 @@ def trigger_action_hotkey(action_id: str) -> None:
 
             last_trigger = float(last_map.get(action_id, 0.0))
             now = time.monotonic()
-            if now - last_trigger < DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS / 1000:
+            if now - last_trigger < APP_TOGGLE_ACTION_HOTKEY_DEBOUNCE_MS / 1000:
                 return
             last_map[action_id] = now
 
@@ -791,11 +799,22 @@ def trigger_action_hotkey(action_id: str) -> None:
     add_event("action", action=action_id)
 
 
-def register_action_hotkey(action_id: str, hotkey: str, suppress: bool = True) -> tuple[bool, str]:
+def register_action_hotkey(
+    action_id: str,
+    hotkey: str,
+    suppress: bool = True,
+    trigger_on_release: bool = False,
+) -> tuple[bool, str]:
     def callback() -> None:
         trigger_action_hotkey(action_id)
 
-    ok, error = register_hotkey_binding(action_id, hotkey, callback, suppress=suppress)
+    ok, error = register_hotkey_binding(
+        action_id,
+        hotkey,
+        callback,
+        suppress=suppress,
+        trigger_on_release=trigger_on_release,
+    )
     if not ok:
         message = f"{action_id} hotkey register failed: {error}"
         set_last_error(message)

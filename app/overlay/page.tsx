@@ -141,6 +141,7 @@ function OverlayPageComponent() {
   const pythonSyncTimerRef = useRef<number | null>(null)
   const pythonSyncSignatureRef = useRef('')
   const lastInputActionTriggerAtRef = useRef<Record<string, number>>({})
+  const appToggleInFlightRef = useRef(false)
   const lastHotkeyErrorRef = useRef<{ source: HotkeyErrorSource; message: string; at: number }>({
     source: 'unknown',
     message: '',
@@ -511,6 +512,8 @@ function OverlayPageComponent() {
 
       if (actionId === 'app.toggle_enabled') {
         if (!current) return
+        if (appToggleInFlightRef.current) return
+        appToggleInFlightRef.current = true
         const nextEnabled = !current.appEnabled
         const nextPatch = nextEnabled
           ? {
@@ -525,7 +528,7 @@ function OverlayPageComponent() {
             }
         const loadingMessage = nextEnabled
           ? language === 'vi'
-            ? 'Dang bat lai app, vui long doi...'
+            ? 'Đang bật lại app, vui lòng đợi...'
             : 'Re-enabling app, please wait...'
           : t(language, 'overlay.toggleAppQueued')
         showActionFeedback('optimistic', loadingMessage)
@@ -549,6 +552,10 @@ function OverlayPageComponent() {
           const raw = error instanceof Error ? error.message : t(language, 'overlay.toggleFailed')
           reportHotkeyError('overlay-action', raw)
           showActionFeedback('error', localizeOverlayActionError(language, raw), ACTION_ERROR_FEEDBACK_MS)
+        } finally {
+          window.setTimeout(() => {
+            appToggleInFlightRef.current = false
+          }, 1100)
         }
         return
       }
