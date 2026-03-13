@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import dynamic from 'next/dynamic'
 import { useSettings } from '@/hooks/use-settings'
 import { t } from '@/lib/i18n'
+import SettingsContent from '@/components/SettingsContent'
 import { X } from 'lucide-react'
 
 type ElectronRegionStyle = CSSProperties & { WebkitAppRegion: 'drag' | 'no-drag' }
@@ -11,13 +11,6 @@ type ElectronRegionStyle = CSSProperties & { WebkitAppRegion: 'drag' | 'no-drag'
 const dragRegionStyle: ElectronRegionStyle = { WebkitAppRegion: 'drag' }
 const noDragRegionStyle: ElectronRegionStyle = { WebkitAppRegion: 'no-drag' }
 const SETTINGS_WINDOW_MOTION_MS = 240
-const SettingsContent = dynamic(() => import('@/components/SettingsContent'), {
-  loading: () => (
-    <div className="rounded-3xl border-2 border-[var(--qt-border)] bg-[var(--qt-surface)] p-4 text-sm text-[var(--qt-muted)]">
-      Loading settings...
-    </div>
-  ),
-})
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings()

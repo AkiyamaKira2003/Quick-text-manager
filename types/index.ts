@@ -235,6 +235,12 @@ export interface Settings {
   windowHeight: number
 }
 
+export interface SaveSettingsPayload {
+  patch: Partial<Settings>
+  awaitFlush?: boolean
+  immediate?: boolean
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -255,7 +261,7 @@ declare global {
       pythonSend: (payload: PythonSendPayload) => Promise<PythonSendResult>
       pythonConfigure: (payload: PythonConfigurePayload) => Promise<PythonConfigureResult>
       pythonGetInputEvents: (after: number) => Promise<PythonEventsResult>
-      saveSettings: (partial: Partial<Settings>) => Promise<Settings>
+      saveSettings: (partial: Partial<Settings> | SaveSettingsPayload) => Promise<Settings>
       reportSendTelemetry: (payload: SendTelemetryInput) => Promise<TelemetrySnapshot>
       reportHotkeyError: (payload: HotkeyErrorTelemetryInput) => Promise<TelemetrySnapshot>
       getWindowKind: () => Promise<WindowKind>

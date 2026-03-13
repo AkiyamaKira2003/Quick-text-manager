@@ -1,6 +1,6 @@
 {
   "name": "quicktext",
-  "version": "0.1.2",
+  "version": "1.0.1",
   "author": "Kira",
   "private": true,
   "main": "electron/main.js",

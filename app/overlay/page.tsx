@@ -32,7 +32,7 @@ const INPUT_POLL_FAST_MS = 140
 const INPUT_POLL_IDLE_MS = 360
 const INPUT_POLL_HIDDEN_MS = 900
 const INPUT_POLL_OVERLAY_OFF_MS = 420
-const INPUT_POLL_APP_OFF_MS = 1200
+const INPUT_POLL_APP_OFF_MS = 240
 const INPUT_POLL_DEGRADED_MS = 1400
 const STYLE_SAVE_DEBOUNCE_MS = 140
 const INDEX_SAVE_DEBOUNCE_MS = 90
@@ -41,6 +41,8 @@ const SEND_SUCCESS_FEEDBACK_MS = 820
 const SEND_ERROR_FEEDBACK_MS = 2400
 const ACTION_SUCCESS_FEEDBACK_MS = 900
 const ACTION_ERROR_FEEDBACK_MS = 2400
+const INPUT_ACTION_DEFAULT_DEBOUNCE_MS = 200
+const INPUT_ACTION_TOGGLE_DEBOUNCE_MS = 650
 const KEYBOARD_MOVE_STEP_PX = 1
 const KEYBOARD_MOVE_FAST_STEP_PX = 5
 const WHEEL_BUFFER_DEBOUNCE_MS = 56
@@ -138,6 +140,7 @@ function OverlayPageComponent() {
   const switchAnimatingRef = useRef(false)
   const pythonSyncTimerRef = useRef<number | null>(null)
   const pythonSyncSignatureRef = useRef('')
+  const lastInputActionTriggerAtRef = useRef<Record<string, number>>({})
   const lastHotkeyErrorRef = useRef<{ source: HotkeyErrorSource; message: string; at: number }>({
     source: 'unknown',
     message: '',
@@ -456,6 +459,12 @@ function OverlayPageComponent() {
   const triggerInputAction = useCallback(
     async (actionId: string) => {
       if (!actionId) return
+      const now = Date.now()
+      const debounceMs = getInputActionDebounceMs(actionId)
+      const previousAt = Number(lastInputActionTriggerAtRef.current[actionId] || 0)
+      if (now - previousAt < debounceMs) return
+      lastInputActionTriggerAtRef.current[actionId] = now
+
       const current = settingsRef.current
       const language = current?.uiLanguage ?? 'vi'
 
@@ -503,26 +512,44 @@ function OverlayPageComponent() {
       if (actionId === 'app.toggle_enabled') {
         if (!current) return
         const nextEnabled = !current.appEnabled
-        showActionFeedback('optimistic', t(language, 'overlay.toggleAppQueued'))
-        void updateSettings(
-          nextEnabled
-            ? {
-                appEnabled: true,
-                overlayVisible: true,
-                overlayInteractive: false,
-              }
-            : {
-                appEnabled: false,
-                overlayVisible: false,
-                overlayInteractive: false,
-              },
-        )
-        showActionFeedback(
-          'success',
-          t(language, 'overlay.toggleAppSuccess', {
-            state: t(language, nextEnabled ? 'main.appStateOn' : 'main.appStateOff'),
-          }),
-        )
+        const nextPatch = nextEnabled
+          ? {
+              appEnabled: true,
+              overlayVisible: true,
+              overlayInteractive: false,
+            }
+          : {
+              appEnabled: false,
+              overlayVisible: false,
+              overlayInteractive: false,
+            }
+        const loadingMessage = nextEnabled
+          ? language === 'vi'
+            ? 'Dang bat lai app, vui long doi...'
+            : 'Re-enabling app, please wait...'
+          : t(language, 'overlay.toggleAppQueued')
+        showActionFeedback('optimistic', loadingMessage)
+        try {
+          if (window.electronAPI?.saveSettings) {
+            await window.electronAPI.saveSettings({
+              patch: nextPatch,
+              immediate: true,
+              awaitFlush: nextEnabled,
+            })
+          } else {
+            await updateSettings(nextPatch)
+          }
+          showActionFeedback(
+            'success',
+            t(language, 'overlay.toggleAppSuccess', {
+              state: t(language, nextEnabled ? 'main.appStateOn' : 'main.appStateOff'),
+            }),
+          )
+        } catch (error) {
+          const raw = error instanceof Error ? error.message : t(language, 'overlay.toggleFailed')
+          reportHotkeyError('overlay-action', raw)
+          showActionFeedback('error', localizeOverlayActionError(language, raw), ACTION_ERROR_FEEDBACK_MS)
+        }
         return
       }
 
@@ -937,6 +964,7 @@ function OverlayPageComponent() {
 
         let totalDelta = 0
         const queuedActions: string[] = []
+        const queuedActionSet = new Set<string>()
         for (const event of events) {
           if (typeof event.id === 'number' && event.id > lastInputEventIdRef.current) {
             lastInputEventIdRef.current = event.id
@@ -949,6 +977,8 @@ function OverlayPageComponent() {
           }
           if (event.type === 'action' && typeof event.action === 'string' && event.action) {
             if (!isAppEnabled && event.action !== 'app.toggle_enabled') continue
+            if (queuedActionSet.has(event.action)) continue
+            queuedActionSet.add(event.action)
             queuedActions.push(event.action)
           }
         }
@@ -1778,6 +1808,18 @@ function withWillChange(style: CSSProperties, enabled: boolean): CSSProperties {
 
 function getDynamicWheelThreshold(_itemCount: number) {
   return 1
+}
+
+function getInputActionDebounceMs(actionId: string) {
+  if (
+    actionId === 'app.toggle_enabled' ||
+    actionId === 'overlay.toggle_visibility' ||
+    actionId === 'main.toggle_visibility' ||
+    actionId === 'overlay.toggle_interaction'
+  ) {
+    return INPUT_ACTION_TOGGLE_DEBOUNCE_MS
+  }
+  return INPUT_ACTION_DEFAULT_DEBOUNCE_MS
 }
 
 function compressWheelSteps(stepDelta: number) {

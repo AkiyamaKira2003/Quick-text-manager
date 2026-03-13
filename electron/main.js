@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, Menu, Tray, nativeImage, dialog, co
 const path = require('path')
 const fs = require('fs')
 const net = require('net')
-const { spawn } = require('child_process')
+const { spawn, execSync } = require('child_process')
 const { pathToFileURL } = require('url')
 const { z } = require('zod')
 const fsp = fs.promises
@@ -52,7 +52,7 @@ const PACKAGED_RENDERER_MAX_PORT_SCAN = 40
 const PACKAGED_RENDERER_BOOT_TIMEOUT_MS = 45000
 const STARTUP_SPLASH_LABELS = {
   vi: {
-    firstLaunchNotice: 'Đang nạp cài đặt QuickText... Nếu là lần chạy đầu, app có thể cần thêm vài giây để chuẩn bị dữ liệu.',
+    firstLaunchNotice: 'Lần chạy đầu sẽ hơi lâu: QuickText đang preload toàn bộ dữ liệu và giao diện...',
     initializing: 'Đang khởi động QuickText...',
     bootRenderer: 'Đang khởi động renderer...',
     loadingSettings: 'Đang nạp cài đặt QuickText...',
@@ -75,7 +75,7 @@ const STARTUP_SPLASH_LABELS = {
     ready: 'Sẵn sàng',
   },
   en: {
-    firstLaunchNotice: 'Loading QuickText settings... On first launch, the app may need a few extra seconds to prepare data.',
+    firstLaunchNotice: 'First launch may take longer: QuickText is preloading all data and UI assets...',
     initializing: 'Booting QuickText...',
     bootRenderer: 'Starting renderer...',
     loadingSettings: 'Loading settings...',
@@ -125,6 +125,7 @@ const TRAY_MENU_REFRESH_DEBOUNCE_MS = 90
 const OVERLAY_REFIT_DEBOUNCE_MS = 220
 const OVERLAY_DEFER_BOOT_MS = 260
 const ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS = 280
+const ELECTRON_HOTKEY_TOGGLE_DEBOUNCE_MS = 900
 const STARTUP_PHASE_LOG_ENABLED = parseBooleanEnv('QT_STARTUP_PHASE_LOG', false)
 const OVERLAY_LIFECYCLE_LOG_ENABLED = parseBooleanEnv('QT_OVERLAY_LIFECYCLE_LOG', false)
 const SKIP_ADMIN_CHECK = parseBooleanEnv('QT_SKIP_ADMIN_CHECK', false)
@@ -331,6 +332,7 @@ let runtimeStateSyncTimer = null
 let settingsWindowSyncTimer = null
 let settingsWindowRestorePending = false
 let suppressSettingsBlurClose = false
+let settingsWindowAutoShowOnReady = false
 let startupSplashActive = false
 let startupSplashStartedAt = 0
 let startupSplashProgress = 0
@@ -1771,9 +1773,9 @@ function buildRendererUrl(routePath) {
   return new URL(routePath, base).toString()
 }
 
-async function prewarmOverlayRouteOnStartup() {
+async function prewarmRendererRouteOnStartup(routePath, phaseLabel = 'route-prewarm') {
   if (!app.isPackaged) return
-  const overlayUrl = buildRendererUrl('/overlay')
+  const targetUrl = buildRendererUrl(routePath)
   const startedAt = Date.now()
   const controller = new AbortController()
   const timeoutId = setTimeout(() => {
@@ -1781,23 +1783,31 @@ async function prewarmOverlayRouteOnStartup() {
   }, STARTUP_OVERLAY_PREWARM_TIMEOUT_MS)
 
   try {
-    logStartupPhase('overlay-prewarm', `begin ${overlayUrl}`)
-    const response = await fetch(overlayUrl, {
+    logStartupPhase(phaseLabel, `begin ${targetUrl}`)
+    const response = await fetch(targetUrl, {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
     })
     if (!response.ok) {
-      throw new Error(`overlay prewarm failed (${response.status})`)
+      throw new Error(`${phaseLabel} failed (${response.status})`)
     }
     await response.text().catch(() => '')
-    logStartupPhase('overlay-prewarm', `done ${Date.now() - startedAt}ms`)
+    logStartupPhase(phaseLabel, `done ${Date.now() - startedAt}ms`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || 'unknown')
-    safeConsoleError('[startup] overlay prewarm skipped:', message)
+    safeConsoleError(`[startup] ${phaseLabel} skipped:`, message)
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+async function prewarmOverlayRouteOnStartup() {
+  return prewarmRendererRouteOnStartup('/overlay', 'overlay-prewarm')
+}
+
+async function prewarmSettingsRouteOnStartup() {
+  return prewarmRendererRouteOnStartup('/settings', 'settings-prewarm')
 }
 
 function resolvePackagedRendererScriptPath() {
@@ -2322,14 +2332,16 @@ function buildStartupSplashMarkup(imageUrl, layoutMetrics = {}) {
         -webkit-mask-image: radial-gradient(ellipse at center, black 64%, transparent 94%);
         filter: drop-shadow(0 20px 54px rgba(0, 0, 0, 0.42));
         display: block;
-        border: 1px solid rgba(8, 16, 28, 0.72);
+        opacity: 0;
+        border: 1px solid rgba(8, 16, 28, 0);
         box-shadow:
-          0 0 0 1px rgba(255, 255, 255, 0.1) inset,
-          0 14px 30px rgba(0, 0, 0, 0.24);
+          0 0 0 1px rgba(255, 255, 255, 0.02) inset,
+          0 14px 30px rgba(0, 0, 0, 0.2);
         pointer-events: none;
         user-select: none;
         -webkit-user-select: none;
         -webkit-user-drag: none;
+        animation: logo-fade-in 980ms cubic-bezier(0.22, 1, 0.36, 1) 140ms both;
       }
       .progress-track {
         width: 100%;
@@ -2438,6 +2450,16 @@ function buildStartupSplashMarkup(imageUrl, layoutMetrics = {}) {
         100% {
           opacity: 1;
           transform: translateY(0) scale(1);
+        }
+      }
+      @keyframes logo-fade-in {
+        0% {
+          opacity: 0.06;
+          filter: blur(1.8px) drop-shadow(0 16px 34px rgba(0, 0, 0, 0.18));
+        }
+        100% {
+          opacity: 1;
+          filter: blur(0) drop-shadow(0 20px 54px rgba(0, 0, 0, 0.42));
         }
       }
     </style>
@@ -2651,7 +2673,7 @@ async function waitForMainWindowStartupLoad() {
     compileHintTimer = setTimeout(() => {
       if (settled || didFinishLoad) return
       logStartupPhase('main-window', 'compile-hint')
-      void setStartupSplashStep(0.5, startupFirstLaunch ? 'compilingMainFirstLaunch' : 'compilingMain')
+      void setStartupSplashStep(0.66, startupFirstLaunch ? 'firstLaunchNotice' : 'preparingControls')
     }, STARTUP_MAIN_COMPILE_HINT_DELAY_MS)
 
     onRendererReady = (event) => {
@@ -2747,8 +2769,13 @@ function resolvePythonUrl(routePath) {
 }
 
 function markPythonHealth(ok) {
+  const next = !!ok
+  const changed = managedPythonHealthOk !== next
   managedPythonHealthAt = Date.now()
-  managedPythonHealthOk = !!ok
+  managedPythonHealthOk = next
+  if (changed && currentSettings) {
+    ensureHotkeys(currentSettings)
+  }
 }
 
 function getPythonBaseUrl() {
@@ -2927,6 +2954,8 @@ async function stopManagedPythonService() {
   const child = managedPythonProcess
   if (!child || child.killed) {
     managedPythonProcess = null
+    markPythonHealth(false)
+    killStrandedPythonServices()
     return
   }
 
@@ -2961,6 +2990,7 @@ async function stopManagedPythonService() {
   managedPythonProcess = null
   managedPythonStopping = false
   markPythonHealth(false)
+  killStrandedPythonServices()
 }
 
 async function startManagedPythonService() {
@@ -3353,6 +3383,42 @@ async function handlePythonConfigure(rawPayload) {
 
     markPythonHealth(false)
     return toPythonError(503, getPythonServiceUnavailableMessage(), correlationId)
+  }
+}
+
+function getSelectedTextFromSettings(settings) {
+  if (!settings || !Array.isArray(settings.items) || settings.items.length === 0) return ''
+  const rawIndex = Number(settings.selectedIndex)
+  const safeIndex = Number.isFinite(rawIndex) ? Math.max(0, Math.min(settings.items.length - 1, Math.floor(rawIndex))) : 0
+  const selected = settings.items[safeIndex]
+  if (!selected || typeof selected !== 'object') return ''
+  return typeof selected.text === 'string' ? selected.text : ''
+}
+
+async function syncPythonServiceForSettings(settings, reason = 'settings-sync') {
+  if (!settings || typeof settings !== 'object') return
+
+  managedPythonRetryAfter = 0
+  const ready = await ensurePythonServiceAvailable()
+  if (!ready) {
+    safeConsoleError(`[python-sync:${reason}] service unavailable`)
+    return
+  }
+
+  const payload = {
+    text: getSelectedTextFromSettings(settings),
+    hotkey: settings.sendHotkey,
+    app_toggle_hotkey: settings.appToggleHotkey,
+    app_enabled: !!settings.appEnabled,
+    overlay_toggle_hotkey: settings.overlayToggleHotkey,
+    main_toggle_hotkey: settings.mainToggleHotkey,
+    overlay_edit_hotkey: settings.overlayEditHotkey,
+    press_enter: false,
+  }
+  const result = await handlePythonConfigure(payload)
+  if (!result || result.ok !== true) {
+    const errorMessage = typeof result?.error === 'string' ? result.error : 'unknown configure error'
+    safeConsoleError(`[python-sync:${reason}] configure failed: ${errorMessage}`)
   }
 }
 
@@ -3898,8 +3964,16 @@ function scheduleSettingsWindowSync() {
   }, SETTINGS_WINDOW_SYNC_DEBOUNCE_MS)
 }
 
-function createSettingsWindow() {
-  if (hotkeyWindow && !hotkeyWindow.isDestroyed()) return hotkeyWindow
+function createSettingsWindow(options = {}) {
+  const autoShow = options.autoShow !== false
+  if (hotkeyWindow && !hotkeyWindow.isDestroyed()) {
+    if (autoShow) {
+      settingsWindowAutoShowOnReady = true
+    }
+    return hotkeyWindow
+  }
+
+  settingsWindowAutoShowOnReady = autoShow
 
   const bounds = getSettingsWindowBounds()
 
@@ -3930,6 +4004,7 @@ function createSettingsWindow() {
 
   hotkeyWindow.once('ready-to-show', () => {
     if (!isQuitting && hotkeyWindow && !hotkeyWindow.isDestroyed()) {
+      if (!settingsWindowAutoShowOnReady) return
       syncSettingsWindowBounds()
       hotkeyWindow.show()
       hotkeyWindow.focus()
@@ -3940,6 +4015,7 @@ function createSettingsWindow() {
     clearSettingsWindowSyncTimer()
     settingsWindowRestorePending = false
     suppressSettingsBlurClose = false
+    settingsWindowAutoShowOnReady = false
     hotkeyWindow = null
     if (!isQuitting && mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
       mainWindow.focus()
@@ -3947,6 +4023,42 @@ function createSettingsWindow() {
   })
 
   return hotkeyWindow
+}
+
+async function prewarmSettingsWindowOnStartup(timeoutMs = STARTUP_OVERLAY_PREWARM_TIMEOUT_MS) {
+  if (isQuitting) return
+  const window = createSettingsWindow({ autoShow: false })
+  if (!window || window.isDestroyed()) return
+  const webContents = window.webContents
+  if (!webContents || webContents.isDestroyed()) return
+  if (!webContents.isLoadingMainFrame()) return
+
+  logStartupPhase('settings-window-prewarm', 'begin')
+  await new Promise((resolve) => {
+    let settled = false
+    const settle = () => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+    const timeoutId = setTimeout(() => {
+      settle()
+    }, Math.max(1200, Math.floor(timeoutMs || 0)))
+
+    webContents.once('did-finish-load', () => {
+      clearTimeout(timeoutId)
+      settle()
+    })
+    webContents.once('did-fail-load', () => {
+      clearTimeout(timeoutId)
+      settle()
+    })
+    window.once('closed', () => {
+      clearTimeout(timeoutId)
+      settle()
+    })
+  })
+  logStartupPhase('settings-window-prewarm', 'done')
 }
 
 function applyMainWindowSettings(settings) {
@@ -4075,7 +4187,8 @@ function schedulePersistMainBounds() {
 }
 
 function shouldUseElectronHotkeyFallback() {
-  return app.isPackaged || FORCE_ELECTRON_HOTKEY_FALLBACK
+  // Python hotkey pipeline is the primary source to avoid repeated keydown auto-repeat loops.
+  return FORCE_ELECTRON_HOTKEY_FALLBACK
 }
 
 function unregisterElectronHotkeys() {
@@ -4097,8 +4210,15 @@ function unregisterElectronHotkeys() {
 function shouldSuppressElectronHotkeyAction(actionId) {
   const now = Date.now()
   const key = String(actionId || '').trim() || 'unknown'
+  const debounceMs =
+    key === 'app.toggle_enabled' ||
+    key === 'overlay.toggle_visibility' ||
+    key === 'main.toggle_visibility' ||
+    key === 'overlay.toggle_interaction'
+      ? ELECTRON_HOTKEY_TOGGLE_DEBOUNCE_MS
+      : ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS
   const lastAt = Number(electronHotkeyLastTriggeredAt.get(key) || 0)
-  if (now - lastAt < ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS) {
+  if (now - lastAt < debounceMs) {
     return true
   }
   electronHotkeyLastTriggeredAt.set(key, now)
@@ -4129,6 +4249,7 @@ function applyAppToggleHotkeyAction() {
     maybeTearDownOverlayWindow(settings)
   }
   ensureHotkeys(settings)
+  void syncPythonServiceForSettings(settings, 'app-toggle-hotkey')
   broadcastSettings()
   refreshTrayMenu()
 }
@@ -4143,7 +4264,6 @@ function handleElectronHotkeyAction(actionId) {
   if (shouldSuppressElectronHotkeyAction(actionId)) return
   try {
     if (actionId === 'app.toggle_enabled') {
-      if (managedPythonHealthOk && !FORCE_ELECTRON_HOTKEY_FALLBACK) return
       applyAppToggleHotkeyAction()
       return
     }
@@ -4210,7 +4330,8 @@ function syncElectronHotkeys(settings) {
 }
 
 function ensureHotkeys(settings) {
-  const nextSignature = `${settings.appEnabled ? '1' : '0'}|${settings.appToggleHotkey}|${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
+  const fallbackState = shouldUseElectronHotkeyFallback() ? '1' : '0'
+  const nextSignature = `${fallbackState}|${settings.appEnabled ? '1' : '0'}|${settings.appToggleHotkey}|${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
   if (nextSignature === hotkeySignature) {
     if (electronHotkeyRegistrations.length === 0 && shouldUseElectronHotkeyFallback()) {
       syncElectronHotkeys(settings)
@@ -4285,7 +4406,7 @@ function showSettingsWindow(options = {}) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     if (!mainWindow.isVisible()) mainWindow.show()
   }
-  const window = createSettingsWindow()
+  const window = createSettingsWindow({ autoShow: true })
   if (!window || window.isDestroyed()) return
   settingsWindowRestorePending = false
   syncSettingsWindowBounds()
@@ -4591,6 +4712,23 @@ function requestAppQuit() {
   app.quit()
 }
 
+function killStrandedPythonServices() {
+  if (process.platform !== 'win32') return
+
+  const run = (command) => {
+    try {
+      execSync(command, { stdio: 'ignore', windowsHide: true })
+    } catch {
+      // best-effort kill
+    }
+  }
+
+  run('taskkill /IM QuickTextPython.exe /F /T')
+  run(
+    'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \\"python.exe\\" -and $_.CommandLine -match \\"python\\\\tool\\\\.py\\" } | ForEach-Object { $_.Terminate() }"',
+  )
+}
+
 function destroyManagedWindow(windowRef) {
   if (!windowRef || windowRef.isDestroyed()) return
   try {
@@ -4627,6 +4765,7 @@ function cleanupRuntime() {
   clearOverlayBootTimer()
   clearRuntimeStateSyncTimer()
   clearSettingsWindowSyncTimer()
+  killStrandedPythonServices()
 
   if (trayMenuRefreshTimer) {
     clearTimeout(trayMenuRefreshTimer)
@@ -4684,6 +4823,7 @@ function cleanupRuntime() {
   trayMenuSignature = ''
   settingsWindowRestorePending = false
   suppressSettingsBlurClose = false
+  settingsWindowAutoShowOnReady = false
   startupSplashActive = false
   startupSplashStartedAt = 0
   startupSplashProgress = 0
@@ -4780,11 +4920,6 @@ if (hasSingleInstanceLock) {
         await setStartupSplashStep(0.08, 'initializing')
       }
 
-      const pythonWarmupPromise = ensurePythonServiceAvailable().catch((error) => {
-        safeConsoleError('[python] warmup failed:', error)
-        return false
-      })
-
       const settingsLoadPromise = (async () => {
         if (splashShown) {
           await setStartupSplashStep(0.16, startupFirstLaunch ? 'firstLaunchNotice' : 'loadingSettings')
@@ -4792,6 +4927,15 @@ if (hasSingleInstanceLock) {
         await loadSettings()
         logStartupPhase('settings', 'loaded')
       })()
+      const pythonWarmupPromise = settingsLoadPromise
+        .then(async () => {
+          await syncPythonServiceForSettings(ensureSettings(), 'startup-warmup')
+          return true
+        })
+        .catch((error) => {
+          safeConsoleError('[python] warmup failed:', error)
+          return false
+        })
       const telemetryWarmupPromise = settingsLoadPromise
         .then(async () => {
           if (splashShown && startupSplashProgress < 0.26) {
@@ -4810,6 +4954,7 @@ if (hasSingleInstanceLock) {
       }
       const rendererBootPromise = startPackagedRendererServerIfNeeded()
       let overlayPrewarmPromise = Promise.resolve()
+      let settingsRoutePrewarmPromise = Promise.resolve()
 
       if (splashShown) {
         await setStartupSplashStep(0.3, 'loadingWindows')
@@ -4826,6 +4971,7 @@ if (hasSingleInstanceLock) {
       }
       logStartupPhase('renderer', 'ready')
       overlayPrewarmPromise = prewarmOverlayRouteOnStartup()
+      settingsRoutePrewarmPromise = prewarmSettingsRouteOnStartup()
 
       await settingsLoadPromise
       if (splashShown) {
@@ -4853,19 +4999,28 @@ if (hasSingleInstanceLock) {
 
       await mainLoadPromise
       logStartupPhase('main-window', 'ready')
-      if (splashShown) {
-        await setStartupSplashStep(0.9, 'uiReady')
-        await hideStartupSplashAndRevealMain()
-      }
-
       await runtimeInitPromise
-      await overlayPrewarmPromise
+      if (splashShown) {
+        if (startupFirstLaunch) {
+          await setStartupSplashStep(0.83, 'firstLaunchNotice')
+        }
+        await setStartupSplashStep(0.84, 'preparingControls')
+      }
+      await Promise.all([overlayPrewarmPromise, settingsRoutePrewarmPromise])
+      if (splashShown) {
+        await setStartupSplashStep(0.88, 'waitingMainReady')
+      }
+      await prewarmSettingsWindowOnStartup()
       const settingsSnapshot = ensureSettings()
       clearOverlayBootTimer()
       createOverlayWindow()
       applyOverlayWindowSettings(settingsSnapshot)
       applyOverlayVisibility(settingsSnapshot.overlayVisible)
       logStartupPhase('overlay', settingsSnapshot.overlayVisible ? 'visible' : 'hidden')
+      if (splashShown) {
+        await setStartupSplashStep(0.92, 'uiReady')
+        await hideStartupSplashAndRevealMain()
+      }
       scheduleRuntimeStateSync(splashShown ? 24 : 0)
       void telemetryWarmupPromise
       void pythonWarmupPromise
@@ -5095,6 +5250,17 @@ function patchTouchesTrayState(patch) {
   return patchHasAnyKey(patch, ['overlayVisible', 'overlayInteractive', 'uiLanguage'])
 }
 
+function patchTouchesPythonRuntimeState(patch) {
+  return patchHasAnyKey(patch, [
+    'appEnabled',
+    'sendHotkey',
+    'appToggleHotkey',
+    'overlayToggleHotkey',
+    'mainToggleHotkey',
+    'overlayEditHotkey',
+  ])
+}
+
 withIpcHandle('get-window-kind', null, (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender)
   if (overlayWindow && owner && owner.id === overlayWindow.id) return 'overlay'
@@ -5168,6 +5334,13 @@ withIpcHandle('save-settings', IPC_SCHEMAS.saveSettings, async (_event, rawInput
     }
   }
   ensureHotkeys(currentSettings)
+  if (patchTouchesPythonRuntimeState(patchPayload)) {
+    if (Object.prototype.hasOwnProperty.call(patchPayload, 'appEnabled')) {
+      await syncPythonServiceForSettings(currentSettings, 'save-settings-app-enabled')
+    } else {
+      void syncPythonServiceForSettings(currentSettings, 'save-settings')
+    }
+  }
   broadcastSettings()
   if (patchTouchesTrayState(patchPayload)) {
     refreshTrayMenu()

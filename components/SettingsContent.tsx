@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
-import dynamic from 'next/dynamic'
 import { t } from '@/lib/i18n'
 import { formatUpdateStatusLabel } from '@/lib/update-status'
+import QuickHotkeyPanel from '@/components/QuickHotkeyPanel'
 import type { AppUpdateState, Settings } from '@/types'
 import {
   AlignCenterHorizontal,
@@ -16,14 +16,6 @@ import {
   Layers,
   MousePointerClick,
 } from 'lucide-react'
-
-const QuickHotkeyPanel = dynamic(() => import('@/components/QuickHotkeyPanel'), {
-  loading: () => (
-    <section className="rounded-3xl border-2 border-[var(--qt-border)] bg-[var(--qt-surface)] p-4 text-xs text-[var(--qt-muted)]">
-      Loading hotkey panel...
-    </section>
-  ),
-})
 
 type SettingsContentProps = {
   settings: Settings

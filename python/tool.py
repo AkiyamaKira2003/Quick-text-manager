@@ -43,13 +43,62 @@ DEFAULT_OVERLAY_EDIT_HOTKEY = "tab"
 DEFAULT_APP_TOGGLE_HOTKEY = "shift+5"
 DEFAULT_PRESS_ENTER = False
 DEFAULT_HOTKEY_DEBOUNCE_MS = 90
-DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS = 120
+DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS = 280
 IME_KEYSTROKE_DELAY_SECONDS = 0.02
 CONVERSION_CACHE_MAX_ITEMS = 2000
+HOTKEY_LATCH_RELEASE_TIMEOUT_SECONDS = 2.5
+HOTKEY_LATCH_RELEASE_POLL_SECONDS = 0.015
+HOTKEY_LATCH_RELEASE_SETTLE_SECONDS = 0.18
 ACTION_OVERLAY_TOGGLE = "overlay.toggle_visibility"
 ACTION_MAIN_TOGGLE = "main.toggle_visibility"
 ACTION_OVERLAY_EDIT = "overlay.toggle_interaction"
 ACTION_APP_TOGGLE = "app.toggle_enabled"
+MODIFIER_ORDER = ("ctrl", "shift", "alt", "windows")
+MODIFIER_TOKENS = set(MODIFIER_ORDER)
+MODIFIER_ALIASES = {
+    "ctrl": "ctrl",
+    "control": "ctrl",
+    "cmdorctrl": "ctrl",
+    "shift": "shift",
+    "alt": "alt",
+    "option": "alt",
+    "meta": "windows",
+    "cmd": "windows",
+    "command": "windows",
+    "super": "windows",
+    "win": "windows",
+    "windows": "windows",
+}
+SPECIAL_KEY_ALIASES = {
+    "escape": "esc",
+    "return": "enter",
+    "spacebar": "space",
+    "del": "delete",
+    "ins": "insert",
+}
+SHIFTED_SYMBOL_ALIASES = {
+    "~": "`",
+    "!": "1",
+    "@": "2",
+    "#": "3",
+    "$": "4",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+    "*": "8",
+    "(": "9",
+    ")": "0",
+    "_": "-",
+    "+": "=",
+    "{": "[",
+    "}": "]",
+    "|": "\\",
+    ":": ";",
+    '"': "'",
+    "<": ",",
+    ">": ".",
+    "?": "/",
+}
 
 HANGUL_BASE_CODEPOINT = 0xAC00
 HANGUL_LAST_CODEPOINT = 0xD7A3
@@ -197,6 +246,8 @@ send_config = {
 }
 
 hotkey_handlers: dict[str, Any] = {}
+hotkey_tokens: dict[str, list[str]] = {}
+hotkey_latches: dict[str, bool] = {}
 
 runtime_state = {
     "typing_available": keyboard_lib is not None,
@@ -259,16 +310,78 @@ def parse_delay_range(raw: Any) -> tuple[float, float]:
     return (float(min_value), float(max_value))
 
 
-def parse_hotkey(raw: Any, fallback: str) -> str:
-    if raw is None:
-        return fallback
-    if not isinstance(raw, str):
+def normalize_hotkey_token(raw_token: str) -> str:
+    token = str(raw_token).strip().lower()
+    if not token:
+        return ""
+
+    mapped_modifier = MODIFIER_ALIASES.get(token)
+    if mapped_modifier:
+        return mapped_modifier
+
+    shifted_alias = SHIFTED_SYMBOL_ALIASES.get(token)
+    if shifted_alias is not None:
+        token = shifted_alias
+
+    if token.startswith("digit") and len(token) == 6 and token[-1].isdigit():
+        token = token[-1]
+    elif token.startswith("key") and len(token) == 4 and token[-1].isalpha():
+        token = token[-1]
+
+    mapped_special = SPECIAL_KEY_ALIASES.get(token)
+    if mapped_special:
+        return mapped_special
+    return token
+
+
+def normalize_hotkey_string(raw_hotkey: Any) -> str:
+    if not isinstance(raw_hotkey, str):
         raise ValueError("hotkey must be string")
 
-    normalized = raw.strip().lower()
-    if not normalized:
+    parts = [normalize_hotkey_token(chunk) for chunk in raw_hotkey.split("+")]
+    parts = [part for part in parts if part]
+    if not parts:
         raise ValueError("hotkey cannot be empty")
-    return normalized
+
+    modifiers: set[str] = set()
+    key = ""
+    for part in parts:
+        if part in MODIFIER_TOKENS:
+            modifiers.add(part)
+            continue
+        if key:
+            raise ValueError("hotkey must include at most one non-modifier key")
+        key = part
+
+    ordered_modifiers = [item for item in MODIFIER_ORDER if item in modifiers]
+    if key:
+        return "+".join([*ordered_modifiers, key])
+    if ordered_modifiers:
+        return "+".join(ordered_modifiers)
+    raise ValueError("hotkey cannot be empty")
+
+
+def parse_hotkey_tokens(hotkey: str) -> list[str]:
+    parts = [normalize_hotkey_token(chunk) for chunk in str(hotkey).split("+")]
+    tokens = [part for part in parts if part]
+    if not tokens:
+        return []
+
+    ordered: list[str] = []
+    for part in tokens:
+        if part in MODIFIER_TOKENS:
+            if part not in ordered:
+                ordered.append(part)
+            continue
+        ordered.append(part)
+    return ordered
+
+
+def parse_hotkey(raw: Any, fallback: str) -> str:
+    normalized_fallback = normalize_hotkey_string(fallback)
+    if raw is None:
+        return normalized_fallback
+    return normalize_hotkey_string(raw)
 
 
 def parse_press_enter(raw: Any, fallback: bool) -> bool:
@@ -296,6 +409,70 @@ def parse_hotkey_debounce_ms(raw: Any, fallback: int) -> int:
     if value < 20 or value > 1000:
         raise ValueError("hotkey_debounce_ms must be between 20 and 1000")
     return value
+
+
+def try_acquire_hotkey_latch(binding_id: str) -> bool:
+    with hotkey_lock:
+        if bool(hotkey_latches.get(binding_id, False)):
+            return False
+        hotkey_latches[binding_id] = True
+        return True
+
+
+def release_hotkey_latch(binding_id: str) -> None:
+    with hotkey_lock:
+        if binding_id in hotkey_latches:
+            hotkey_latches[binding_id] = False
+
+
+def is_hotkey_binding_pressed(binding_id: str) -> bool:
+    if keyboard_lib is None:
+        return False
+
+    with hotkey_lock:
+        tokens = list(hotkey_tokens.get(binding_id, []))
+    if not tokens:
+        return False
+
+    for token in tokens:
+        try:
+            if not keyboard_lib.is_pressed(token):
+                return False
+        except Exception:
+            return False
+    return True
+
+
+def release_hotkey_latch_after_release(binding_id: str) -> None:
+    deadline = time.monotonic() + HOTKEY_LATCH_RELEASE_TIMEOUT_SECONDS
+    idle_since: float | None = None
+
+    while time.monotonic() < deadline:
+        if is_hotkey_binding_pressed(binding_id):
+            idle_since = None
+        else:
+            if idle_since is None:
+                idle_since = time.monotonic()
+            elif time.monotonic() - idle_since >= HOTKEY_LATCH_RELEASE_SETTLE_SECONDS:
+                break
+        time.sleep(HOTKEY_LATCH_RELEASE_POLL_SECONDS)
+
+    release_hotkey_latch(binding_id)
+
+
+def run_hotkey_callback_with_latch(binding_id: str, callback: Any) -> None:
+    if not try_acquire_hotkey_latch(binding_id):
+        return
+
+    try:
+        callback()
+    except Exception as exc:  # pragma: no cover - runtime environment dependent
+        set_last_error(f"hotkey callback failed ({binding_id}): {exc}")
+    finally:
+        try:
+            threading.Thread(target=release_hotkey_latch_after_release, args=(binding_id,), daemon=True).start()
+        except Exception:
+            release_hotkey_latch(binding_id)
 
 
 def convert_hangul_to_2beolsik(text: str) -> tuple[str, bool]:
@@ -460,6 +637,9 @@ def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any, suppres
         set_last_error(message)
         return False, message
 
+    def wrapped_callback() -> None:
+        run_hotkey_callback_with_latch(binding_id, callback)
+
     with hotkey_lock:
         previous = hotkey_handlers.get(binding_id)
         if previous is not None:
@@ -468,20 +648,29 @@ def register_hotkey_binding(binding_id: str, hotkey: str, callback: Any, suppres
             except Exception:
                 pass
             hotkey_handlers.pop(binding_id, None)
+            hotkey_tokens.pop(binding_id, None)
+            hotkey_latches.pop(binding_id, None)
 
         try:
             handle = keyboard_lib.add_hotkey(
                 hotkey,
-                callback,
-                trigger_on_release=True,
+                wrapped_callback,
+                trigger_on_release=False,
                 suppress=suppress,
             )
         except TypeError:
-            handle = keyboard_lib.add_hotkey(hotkey, callback, trigger_on_release=True)
+            try:
+                handle = keyboard_lib.add_hotkey(hotkey, wrapped_callback, suppress=suppress)
+            except TypeError:
+                handle = keyboard_lib.add_hotkey(hotkey, wrapped_callback)
         except Exception as exc:  # pragma: no cover - runtime environment dependent
+            hotkey_tokens.pop(binding_id, None)
+            hotkey_latches.pop(binding_id, None)
             return False, str(exc)
 
         hotkey_handlers[binding_id] = handle
+        hotkey_tokens[binding_id] = parse_hotkey_tokens(hotkey)
+        hotkey_latches[binding_id] = False
 
     return True, ""
 
@@ -491,12 +680,13 @@ def unregister_hotkey_binding(binding_id: str) -> None:
         return
     with hotkey_lock:
         previous = hotkey_handlers.pop(binding_id, None)
-        if previous is None:
-            return
-        try:
-            keyboard_lib.remove_hotkey(previous)
-        except Exception:
-            pass
+        hotkey_tokens.pop(binding_id, None)
+        hotkey_latches.pop(binding_id, None)
+        if previous is not None:
+            try:
+                keyboard_lib.remove_hotkey(previous)
+            except Exception:
+                pass
 
 
 def register_send_hotkey(hotkey: str) -> tuple[bool, str]:
@@ -758,9 +948,10 @@ def configure():
 
     with state_lock:
         app_enabled_now = bool(next_app_enabled)
+        # Keep app-toggle binding stable across app_enabled flips to preserve latch state
+        # and avoid repeated toggles while the key is still physically held.
         need_register_app_toggle = bool(
             "app_toggle_hotkey" in data
-            or "app_enabled" in data
             or not runtime_state["app_toggle_registered"]
         )
         need_register_send = app_enabled_now and bool(
