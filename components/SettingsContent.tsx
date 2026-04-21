@@ -6,15 +6,19 @@ import { formatUpdateStatusLabel } from '@/lib/update-status'
 import QuickHotkeyPanel from '@/components/QuickHotkeyPanel'
 import type { AppUpdateState, Settings } from '@/types'
 import {
-  AlignCenterHorizontal,
-  AlignEndHorizontal,
-  AlignStartHorizontal,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Eye,
   EyeOff,
-  Hash,
+  FileText,
   Image,
+  ImageIcon,
+  Languages,
   Layers,
   MousePointerClick,
+  ShieldBan,
+  SlidersHorizontal,
 } from 'lucide-react'
 
 type SettingsContentProps = {
@@ -25,19 +29,20 @@ type SettingsContentProps = {
 
 type StyleDraft = {
   opacity: number
-  noteOpacity: number
+  overlayToolsOpacity: number
+  overlayToolsTextPanelOpacity: number
+  overlayToolsImagePanelOpacity: number
+  overlayHudContextOpacity: number
   textColor: string
-  noteColor: string
   fontSize: number
-  noteSize: number
 }
 
 const STYLE_SAVE_DEBOUNCE_MS = 140
 
 const ALIGN_OPTIONS = [
-  { value: 'left', icon: AlignStartHorizontal },
-  { value: 'center', icon: AlignCenterHorizontal },
-  { value: 'right', icon: AlignEndHorizontal },
+  { value: 'left', icon: AlignLeft },
+  { value: 'center', icon: AlignCenter },
+  { value: 'right', icon: AlignRight },
 ] as const
 
 const LANGUAGE_OPTIONS = [
@@ -64,11 +69,12 @@ export default function SettingsContent({ settings, updateSettings, className = 
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [styleDraft, setStyleDraft] = useState<StyleDraft>({
     opacity: settings.opacity,
-    noteOpacity: settings.noteOpacity,
+    overlayToolsOpacity: settings.overlayToolsOpacity,
+    overlayToolsTextPanelOpacity: settings.overlayToolsTextPanelOpacity,
+    overlayToolsImagePanelOpacity: settings.overlayToolsImagePanelOpacity,
+    overlayHudContextOpacity: settings.overlayHudContextOpacity,
     textColor: settings.textColor,
-    noteColor: settings.noteColor,
     fontSize: settings.fontSize,
-    noteSize: settings.noteSize,
   })
 
   const saveTimerRef = useRef<number | null>(null)
@@ -77,13 +83,22 @@ export default function SettingsContent({ settings, updateSettings, className = 
   useEffect(() => {
     setStyleDraft({
       opacity: settings.opacity,
-      noteOpacity: settings.noteOpacity,
+      overlayToolsOpacity: settings.overlayToolsOpacity,
+      overlayToolsTextPanelOpacity: settings.overlayToolsTextPanelOpacity,
+      overlayToolsImagePanelOpacity: settings.overlayToolsImagePanelOpacity,
+      overlayHudContextOpacity: settings.overlayHudContextOpacity,
       textColor: settings.textColor,
-      noteColor: settings.noteColor,
       fontSize: settings.fontSize,
-      noteSize: settings.noteSize,
     })
-  }, [settings.fontSize, settings.noteColor, settings.noteOpacity, settings.noteSize, settings.opacity, settings.textColor])
+  }, [
+    settings.fontSize,
+    settings.opacity,
+    settings.overlayHudContextOpacity,
+    settings.overlayToolsImagePanelOpacity,
+    settings.overlayToolsTextPanelOpacity,
+    settings.overlayToolsOpacity,
+    settings.textColor,
+  ])
 
   const flushPendingPatch = useCallback(() => {
     const patch = pendingPatchRef.current
@@ -117,6 +132,8 @@ export default function SettingsContent({ settings, updateSettings, className = 
   }, [flushPendingPatch])
 
   const language = settings.uiLanguage
+  const disableTextModuleToggle = settings.overlayToolsShowTextManager && !settings.overlayToolsShowImageTranslate
+  const disableImageModuleToggle = settings.overlayToolsShowImageTranslate && !settings.overlayToolsShowTextManager
   const withState = (label: string, enabled: boolean) =>
     `${label} · ${enabled ? t(language, 'main.enabled') : t(language, 'main.disabled')}`
 
@@ -318,7 +335,7 @@ export default function SettingsContent({ settings, updateSettings, className = 
 
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-wide text-[var(--qt-muted)]">{t(language, 'settings.elements')}</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
               <IconHoverButton
                 onClick={() => void updateSettings({ overlayShowIcon: !settings.overlayShowIcon })}
                 icon={<Image className="size-4" />}
@@ -330,16 +347,65 @@ export default function SettingsContent({ settings, updateSettings, className = 
                 }`}
               />
               <IconHoverButton
-                onClick={() => void updateSettings({ overlayShowCounter: !settings.overlayShowCounter })}
-                icon={<Hash className="size-4" />}
-                label={withState(t(language, 'main.overlayShowCounter'), settings.overlayShowCounter)}
+                onClick={() =>
+                  void updateSettings({
+                    overlayToolsShowTextManager: !settings.overlayToolsShowTextManager,
+                    overlayToolsShowImageTranslate:
+                      !settings.overlayToolsShowTextManager && !settings.overlayToolsShowImageTranslate
+                        ? true
+                        : settings.overlayToolsShowImageTranslate,
+                  })
+                }
+                disabled={disableTextModuleToggle}
+                icon={<FileText className="size-4" />}
+                label={withState(t(language, 'overlayTools.tabText'), settings.overlayToolsShowTextManager)}
+                className={`rounded-xl border px-2 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                  settings.overlayToolsShowTextManager
+                    ? 'border-cyan-300/70 bg-cyan-500/20 text-cyan-100'
+                    : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)]'
+                }`}
+              />
+              <IconHoverButton
+                onClick={() =>
+                  void updateSettings({
+                    overlayToolsShowImageTranslate: !settings.overlayToolsShowImageTranslate,
+                    overlayToolsShowTextManager:
+                      !settings.overlayToolsShowImageTranslate && !settings.overlayToolsShowTextManager
+                        ? true
+                        : settings.overlayToolsShowTextManager,
+                  })
+                }
+                disabled={disableImageModuleToggle}
+                icon={<Languages className="size-4" />}
+                label={withState(t(language, 'overlayTools.tabImage'), settings.overlayToolsShowImageTranslate)}
+                className={`rounded-xl border px-2 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                  settings.overlayToolsShowImageTranslate
+                    ? 'border-cyan-300/70 bg-cyan-500/20 text-cyan-100'
+                    : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)]'
+                }`}
+              />
+              <IconHoverButton
+                onClick={() => void updateSettings({ overlayToolsPanelVisible: !settings.overlayToolsPanelVisible })}
+                icon={<SlidersHorizontal className="size-4" />}
+                label={withState(t(language, 'settings.overlayToolsPanel'), settings.overlayToolsPanelVisible)}
                 className={`rounded-xl border px-2 py-2 text-xs font-semibold ${
-                  settings.overlayShowCounter
-                    ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
+                  settings.overlayToolsPanelVisible
+                    ? 'border-cyan-300/70 bg-cyan-500/20 text-cyan-100'
+                    : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)]'
+                }`}
+              />
+              <IconHoverButton
+                onClick={() => void updateSettings({ overlayPlayShowImageCard: !settings.overlayPlayShowImageCard })}
+                icon={<ImageIcon className="size-4" />}
+                label={withState(t(language, 'settings.overlayPlayShowImageCard'), settings.overlayPlayShowImageCard)}
+                className={`rounded-xl border px-2 py-2 text-xs font-semibold ${
+                  settings.overlayPlayShowImageCard
+                    ? 'border-cyan-300/70 bg-cyan-500/20 text-cyan-100'
                     : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)]'
                 }`}
               />
             </div>
+            <p className="text-[11px] text-[var(--qt-muted)]">{t(language, 'settings.overlayToolsHint')}</p>
           </div>
         </div>
 
@@ -352,6 +418,21 @@ export default function SettingsContent({ settings, updateSettings, className = 
               label={withState(t(language, 'settings.smartClickThrough'), settings.overlaySmartClickThrough)}
               className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
                 settings.overlaySmartClickThrough
+                  ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
+                  : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)]'
+              }`}
+            />
+
+            <IconHoverButton
+              onClick={() =>
+                void updateSettings({
+                  blockAltF4WhenEnabled: !settings.blockAltF4WhenEnabled,
+                })
+              }
+              icon={<ShieldBan className="size-4" />}
+              label={withState(t(language, 'settings.blockAltF4WhenEnabled'), settings.blockAltF4WhenEnabled)}
+              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                settings.blockAltF4WhenEnabled
                   ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
                   : 'border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)]'
               }`}
@@ -397,7 +478,7 @@ export default function SettingsContent({ settings, updateSettings, className = 
 
         <div className="mt-4">
           <p className="text-xs uppercase tracking-wide text-[var(--qt-muted)]">{t(language, 'settings.style')}</p>
-          <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-4">
+          <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-6">
             <OverlaySlider
               label={t(language, 'overlay.opacity')}
               value={styleDraft.opacity}
@@ -410,14 +491,14 @@ export default function SettingsContent({ settings, updateSettings, className = 
               }}
             />
             <OverlaySlider
-              label={t(language, 'overlay.noteOpacity')}
-              value={styleDraft.noteOpacity}
+              label={t(language, 'settings.overlayToolsOpacity', { value: Math.round(styleDraft.overlayToolsOpacity * 100) })}
+              value={styleDraft.overlayToolsOpacity}
               min={0.2}
               max={1}
               step={0.05}
               onChange={(value) => {
-                setStyleDraft((current) => ({ ...current, noteOpacity: value }))
-                queuePatch({ noteOpacity: value })
+                setStyleDraft((current) => ({ ...current, overlayToolsOpacity: value }))
+                queuePatch({ overlayToolsOpacity: value })
               }}
             />
             <OverlaySlider
@@ -432,19 +513,41 @@ export default function SettingsContent({ settings, updateSettings, className = 
               }}
             />
             <OverlaySlider
-              label={t(language, 'overlay.noteSize')}
-              value={styleDraft.noteSize}
-              min={12}
-              max={72}
-              step={1}
+              label={t(language, 'settings.overlayToolsTextOpacity', { value: Math.round(styleDraft.overlayToolsTextPanelOpacity * 100) })}
+              value={styleDraft.overlayToolsTextPanelOpacity}
+              min={0.2}
+              max={1}
+              step={0.05}
               onChange={(value) => {
-                setStyleDraft((current) => ({ ...current, noteSize: value }))
-                queuePatch({ noteSize: value })
+                setStyleDraft((current) => ({ ...current, overlayToolsTextPanelOpacity: value }))
+                queuePatch({ overlayToolsTextPanelOpacity: value })
+              }}
+            />
+            <OverlaySlider
+              label={t(language, 'settings.overlayToolsImageOpacity', { value: Math.round(styleDraft.overlayToolsImagePanelOpacity * 100) })}
+              value={styleDraft.overlayToolsImagePanelOpacity}
+              min={0.2}
+              max={1}
+              step={0.05}
+              onChange={(value) => {
+                setStyleDraft((current) => ({ ...current, overlayToolsImagePanelOpacity: value }))
+                queuePatch({ overlayToolsImagePanelOpacity: value })
+              }}
+            />
+            <OverlaySlider
+              label={t(language, 'settings.overlayHudContextOpacity', { value: Math.round(styleDraft.overlayHudContextOpacity * 100) })}
+              value={styleDraft.overlayHudContextOpacity}
+              min={0.2}
+              max={1}
+              step={0.05}
+              onChange={(value) => {
+                setStyleDraft((current) => ({ ...current, overlayHudContextOpacity: value }))
+                queuePatch({ overlayHudContextOpacity: value })
               }}
             />
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-1">
             <label className="block rounded-xl border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] p-2 text-xs text-[var(--qt-muted)]">
               <span>
                 {t(language, 'overlay.elementText')} {t(language, 'overlay.color')}
@@ -457,22 +560,6 @@ export default function SettingsContent({ settings, updateSettings, className = 
                   if (!parsed) return
                   setStyleDraft((current) => ({ ...current, textColor: parsed }))
                   queuePatch({ textColor: parsed })
-                }}
-                className="mt-1 h-8 w-full cursor-pointer rounded border border-[var(--qt-border)] bg-[var(--qt-surface)] p-0.5"
-              />
-            </label>
-            <label className="block rounded-xl border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] p-2 text-xs text-[var(--qt-muted)]">
-              <span>
-                {t(language, 'overlay.elementNote')} {t(language, 'overlay.color')}
-              </span>
-              <input
-                type="color"
-                value={styleDraft.noteColor}
-                onChange={(event) => {
-                  const parsed = normalizeColorInput(event.target.value)
-                  if (!parsed) return
-                  setStyleDraft((current) => ({ ...current, noteColor: parsed }))
-                  queuePatch({ noteColor: parsed })
                 }}
                 className="mt-1 h-8 w-full cursor-pointer rounded border border-[var(--qt-border)] bg-[var(--qt-surface)] p-0.5"
               />

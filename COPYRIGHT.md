@@ -1,6 +1,6 @@
 # Copyright Notice
 
-QuickText
+Quick Text
 
 Copyright (c) 2026 Kira
 

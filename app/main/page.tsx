@@ -8,7 +8,7 @@ import { formatComboForDisplay, getEffectiveHotkeyBindings, isHotkeyActionActive
 import { t, type MessageKey } from '@/lib/i18n'
 import { formatUpdateStatusLabel, shouldShowInAppUpdateNotice } from '@/lib/update-status'
 import type { AppUpdateState, HotkeyActionId, ProfilingRuntimeState, TelemetrySnapshot } from '@/types'
-import { Minus, Power, Settings2, X } from 'lucide-react'
+import { ClipboardList, Languages, Minus, Power, Settings2, X } from 'lucide-react'
 import ProfilingShell from '@/components/ProfilingShell'
 
 type ElectronRegionStyle = CSSProperties & { WebkitAppRegion: 'drag' | 'no-drag' }
@@ -28,6 +28,7 @@ const HOTKEY_CHIPS: HotkeyChip[] = [
 
 const dragRegionStyle: ElectronRegionStyle = { WebkitAppRegion: 'drag' }
 const noDragRegionStyle: ElectronRegionStyle = { WebkitAppRegion: 'no-drag' }
+const APP_TOGGLE_LOADING_MIN_MS = 220
 const TextManager = dynamic(() => import('@/components/TextManager'), {
   loading: () => (
     <section className="rounded-3xl border border-[var(--qt-border)] bg-[color-mix(in_oklab,var(--qt-surface)_72%,transparent)] p-4 text-sm text-[var(--qt-muted)]">
@@ -43,6 +44,7 @@ export default function MainPage() {
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
+  const [appTogglePendingTarget, setAppTogglePendingTarget] = useState<boolean | null>(null)
   const hasNotifiedMainReadyRef = useRef(false)
 
   const closeApp = useCallback(() => {
@@ -66,6 +68,56 @@ export default function MainPage() {
     }
     window.location.href = '/settings'
   }, [])
+
+  const openImageTranslateOverlay = useCallback(() => {
+    if (window.electronAPI?.openOverlayImageWindow) {
+      window.electronAPI.openOverlayImageWindow('image')
+      return
+    }
+    window.location.href = '/overlay-image?tab=image'
+  }, [])
+
+  const openTextOverlay = useCallback(() => {
+    if (window.electronAPI?.openOverlayImageWindow) {
+      window.electronAPI.openOverlayImageWindow('text')
+      return
+    }
+    window.location.href = '/overlay-image?tab=text'
+  }, [])
+
+  const toggleAppEnabled = useCallback(async () => {
+    if (!settings) return
+    if (appTogglePendingTarget !== null) return
+
+    const nextEnabled = !settings.appEnabled
+    const startedAt = Date.now()
+    setAppTogglePendingTarget(nextEnabled)
+
+    try {
+      await updateSettings(
+        nextEnabled
+          ? {
+              appEnabled: true,
+              overlayVisible: true,
+              overlayInteractive: false,
+            }
+          : {
+              appEnabled: false,
+              overlayVisible: false,
+              overlayInteractive: false,
+            },
+      )
+    } finally {
+      const elapsedMs = Date.now() - startedAt
+      const remainMs = APP_TOGGLE_LOADING_MIN_MS - elapsedMs
+      if (remainMs > 0) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, remainMs)
+        })
+      }
+      setAppTogglePendingTarget(null)
+    }
+  }, [appTogglePendingTarget, settings, updateSettings])
 
   const checkForUpdates = useCallback(async () => {
     if (!window.electronAPI?.checkForUpdates) return
@@ -225,7 +277,18 @@ export default function MainPage() {
       ),
     [settings?.appEnabled, settings?.overlayInteractive, settings?.overlayVisible],
   )
-  const appToggleCombo = comboByActionId.get('app.toggle_enabled') ?? formatComboForDisplay(settings?.appToggleHotkey ?? 'Shift+5')
+  const appToggleCombo = comboByActionId.get('app.toggle_enabled') ?? formatComboForDisplay(settings?.appToggleHotkey ?? null)
+  const isAppToggleLoading = appTogglePendingTarget !== null
+  const appToggleLoadingLabel =
+    appTogglePendingTarget === null
+      ? ''
+      : appTogglePendingTarget
+        ? language === 'en'
+          ? 'Turning app back on...'
+          : 'Đang bật lại app...'
+        : language === 'en'
+          ? 'Turning app off...'
+          : 'Đang tắt app...'
   const sendSuccessCount = telemetry?.send.successCount ?? 0
   const sendFailureCount = telemetry?.send.failureCount ?? 0
   const hotkeyErrorCount = telemetry?.hotkey.errorCount ?? 0
@@ -270,7 +333,7 @@ export default function MainPage() {
         <div className="h-dvh w-full overflow-hidden bg-transparent p-2 text-foreground">
           <main className="qt-shell qt-window-shell relative flex h-full min-h-0 w-full flex-col gap-3 rounded-[22px] p-3 sm:p-4">
             <section className="rounded-3xl border border-[var(--qt-border)] bg-[color-mix(in_oklab,var(--qt-surface)_82%,transparent)] p-5 text-sm text-[var(--qt-muted)]">
-              Đang nạp cài đặt QuickText... Nếu là lần chạy đầu, app có thể cần thêm vài giây để chuẩn bị dữ liệu.
+              Đang nạp cài đặt Quick Text... Nếu là lần chạy đầu, app có thể cần thêm vài giây để chuẩn bị dữ liệu.
             </section>
           </main>
         </div>
@@ -282,71 +345,27 @@ export default function MainPage() {
     <ProfilingShell>
       <div className="h-dvh w-full overflow-hidden bg-transparent p-2 text-foreground">
         <main className="qt-shell qt-window-shell relative flex h-full min-h-0 w-full flex-col gap-3 rounded-[22px] p-3 sm:p-4">
-          <header className="relative rounded-3xl qt-panel qt-elev-medium p-4" style={dragRegionStyle}>
-            <div className="qt-stagger-sm absolute right-4 top-4 z-20 flex items-center gap-1.5" style={noDragRegionStyle}>
-              <button
-                onClick={() =>
-                  void updateSettings(
-                    settings.appEnabled
-                      ? {
-                          appEnabled: false,
-                          overlayVisible: false,
-                          overlayInteractive: false,
-                        }
-                      : {
-                          appEnabled: true,
-                          overlayVisible: true,
-                          overlayInteractive: false,
-                        },
-                  )
-                }
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                  settings.appEnabled
-                    ? 'border-emerald-400/60 bg-emerald-400/18 text-emerald-100 hover:bg-emerald-400/28'
-                    : 'border-red-500/65 bg-red-500/18 text-red-200 hover:bg-red-500/28'
-                }`}
-                title={appToggleLabel}
-                aria-label={appToggleLabel}
-              >
-                <Power className="size-4" />
-              </button>
-              <button
-                onClick={() => void toggleLanguage()}
-                className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] px-2 text-[10px] font-semibold text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
-                title={settings.uiLanguage === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
-                aria-label={settings.uiLanguage === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
-              >
-                {settings.uiLanguage === 'vi' ? 'VI' : 'EN'}
-              </button>
-              <button
-                onClick={openSettings}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
-                title={t(language, 'main.openSettings')}
-                aria-label={t(language, 'main.openSettings')}
-              >
-                <Settings2 className="size-4" />
-              </button>
-              <button
-                onClick={() => window.electronAPI?.hideMainWindow?.()}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
-                title={t(language, 'main.hideManager')}
-                aria-label={t(language, 'main.hideManager')}
-              >
-                <Minus className="size-4" />
-              </button>
-              <button
-                onClick={closeApp}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-500/60 bg-red-500/15 text-red-200 hover:bg-red-500/25"
-                title="Close App"
-                aria-label="Close App"
-              >
-                <X className="size-4" />
-              </button>
+          <div className="qt-manager-drag-strip" style={dragRegionStyle} />
+
+          {isAppToggleLoading ? (
+            <div className="pointer-events-none absolute inset-0 z-[70] flex items-center justify-center">
+              <div className="rounded-2xl border border-[var(--qt-primary)]/45 bg-[var(--qt-surface)]/95 px-4 py-3 qt-elev-medium qt-blur-soft">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block size-4 animate-spin rounded-full border-2 border-[var(--qt-primary)]/35 border-t-[var(--qt-primary)]" />
+                  <p className="text-sm font-semibold text-[var(--qt-fg)]">{appToggleLoadingLabel}</p>
+                </div>
+                <p className="mt-1 text-xs text-[var(--qt-muted)]">
+                  {language === 'en' ? 'Applying runtime changes...' : 'Đang áp dụng thay đổi runtime...'}
+                </p>
+              </div>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          ) : null}
+
+          <header className="relative rounded-3xl qt-panel qt-elev-medium p-4" style={dragRegionStyle}>
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl qt-panel-soft">
-                  <Image src="/icon.png" alt="QuickText icon" fill sizes="56px" className="object-cover" priority />
+                  <Image src="/icon.png" alt="Quick Text icon" fill sizes="56px" className="object-cover" priority />
                 </div>
                 <div className="min-w-0">
                   <div className="relative inline-flex max-w-full flex-col group/title">
@@ -358,7 +377,71 @@ export default function MainPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col items-end gap-2" style={noDragRegionStyle}>
+              <div className="flex min-w-0 flex-col gap-2 xl:items-end">
+                <div className="qt-stagger-sm flex max-w-full flex-wrap items-center justify-end gap-1.5 self-end" style={noDragRegionStyle}>
+                  <button
+                    onClick={() => void toggleAppEnabled()}
+                    disabled={isAppToggleLoading}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                      settings.appEnabled
+                        ? 'border-emerald-400/60 bg-emerald-400/18 text-emerald-100 hover:bg-emerald-400/28'
+                        : 'border-red-500/65 bg-red-500/18 text-red-200 hover:bg-red-500/28'
+                    } ${isAppToggleLoading ? 'cursor-not-allowed opacity-70' : ''}`}
+                    title={appToggleLabel}
+                    aria-label={appToggleLabel}
+                  >
+                    <Power className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => void toggleLanguage()}
+                    className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] px-2 text-[10px] font-semibold text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
+                    title={settings.uiLanguage === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
+                    aria-label={settings.uiLanguage === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
+                  >
+                    {settings.uiLanguage === 'vi' ? 'VI' : 'EN'}
+                  </button>
+                  <button
+                    onClick={openTextOverlay}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
+                    title={t(language, 'main.openTextOverlay')}
+                    aria-label={t(language, 'main.openTextOverlay')}
+                  >
+                    <ClipboardList className="size-4" />
+                  </button>
+                  <button
+                    onClick={openImageTranslateOverlay}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
+                    title={t(language, 'main.openImageOverlay')}
+                    aria-label={t(language, 'main.openImageOverlay')}
+                  >
+                    <Languages className="size-4" />
+                  </button>
+                  <button
+                    onClick={openSettings}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
+                    title={t(language, 'main.openSettings')}
+                    aria-label={t(language, 'main.openSettings')}
+                  >
+                    <Settings2 className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => window.electronAPI?.hideMainWindow?.()}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--qt-border)] bg-[var(--qt-surface-soft)] text-[var(--qt-fg)] hover:border-[var(--qt-primary)]"
+                    title={t(language, 'main.hideManager')}
+                    aria-label={t(language, 'main.hideManager')}
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <button
+                    onClick={closeApp}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-500/60 bg-red-500/15 text-red-200 hover:bg-red-500/25"
+                    title="Close App"
+                    aria-label="Close App"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
                 <div className="qt-stagger-sm flex max-w-full flex-wrap items-center justify-end gap-1 text-[10px] font-semibold">
                   <span
                     className={`rounded-full border px-2 py-0.5 ${

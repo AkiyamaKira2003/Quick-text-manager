@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
+import { enforceApiAccess } from '@/lib/api-access'
 
 const DEFAULT_PYTHON_API_BASE_URL = 'http://127.0.0.1:5000'
 const REQUEST_TIMEOUT_MS = 3000
 
 export async function GET(request: Request) {
+  const accessError = enforceApiAccess(request)
+  if (accessError) return accessError
+
   const url = new URL(request.url)
   const afterParam = url.searchParams.get('after') ?? '0'
   const after = Number.parseInt(afterParam, 10)

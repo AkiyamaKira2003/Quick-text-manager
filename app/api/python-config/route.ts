@@ -1,21 +1,26 @@
 import { NextResponse } from 'next/server'
+import { enforceApiAccess } from '@/lib/api-access'
 
 const DEFAULT_PYTHON_API_BASE_URL = 'http://127.0.0.1:5000'
 const REQUEST_TIMEOUT_MS = 3000
 
 type ConfigurePayload = {
   text?: string
-  hotkey?: string
-  overlay_toggle_hotkey?: string
-  main_toggle_hotkey?: string
-  overlay_edit_hotkey?: string
-  app_toggle_hotkey?: string
+  hotkey?: string | null
+  overlay_toggle_hotkey?: string | null
+  main_toggle_hotkey?: string | null
+  overlay_edit_hotkey?: string | null
+  app_toggle_hotkey?: string | null
+  block_alt_f4?: boolean
   app_enabled?: boolean
   delay_range?: [number, number]
   press_enter?: boolean
 }
 
 export async function POST(request: Request) {
+  const accessError = enforceApiAccess(request)
+  if (accessError) return accessError
+
   let rawBody: unknown
   try {
     rawBody = await request.json()
@@ -34,6 +39,7 @@ export async function POST(request: Request) {
     main_toggle_hotkey?: unknown
     overlay_edit_hotkey?: unknown
     app_toggle_hotkey?: unknown
+    block_alt_f4?: unknown
     app_enabled?: unknown
     delay_range?: unknown
     press_enter?: unknown
@@ -47,43 +53,68 @@ export async function POST(request: Request) {
   }
 
   if (typeof body.hotkey !== 'undefined') {
-    if (typeof body.hotkey !== 'string') return toError(400, '`hotkey` must be string')
-    const hotkey = body.hotkey.trim()
-    if (!hotkey) return toError(400, '`hotkey` cannot be empty')
-    payload.hotkey = hotkey
+    if (body.hotkey === null) {
+      payload.hotkey = null
+    } else {
+      if (typeof body.hotkey !== 'string') return toError(400, '`hotkey` must be string or null')
+      const hotkey = body.hotkey.trim()
+      if (!hotkey) return toError(400, '`hotkey` cannot be empty')
+      payload.hotkey = hotkey
+    }
   }
 
   if (typeof body.overlay_toggle_hotkey !== 'undefined') {
-    if (typeof body.overlay_toggle_hotkey !== 'string') return toError(400, '`overlay_toggle_hotkey` must be string')
-    const hotkey = body.overlay_toggle_hotkey.trim()
-    if (!hotkey) return toError(400, '`overlay_toggle_hotkey` cannot be empty')
-    payload.overlay_toggle_hotkey = hotkey
+    if (body.overlay_toggle_hotkey === null) {
+      payload.overlay_toggle_hotkey = null
+    } else {
+      if (typeof body.overlay_toggle_hotkey !== 'string') return toError(400, '`overlay_toggle_hotkey` must be string or null')
+      const hotkey = body.overlay_toggle_hotkey.trim()
+      if (!hotkey) return toError(400, '`overlay_toggle_hotkey` cannot be empty')
+      payload.overlay_toggle_hotkey = hotkey
+    }
   }
 
   if (typeof body.main_toggle_hotkey !== 'undefined') {
-    if (typeof body.main_toggle_hotkey !== 'string') return toError(400, '`main_toggle_hotkey` must be string')
-    const hotkey = body.main_toggle_hotkey.trim()
-    if (!hotkey) return toError(400, '`main_toggle_hotkey` cannot be empty')
-    payload.main_toggle_hotkey = hotkey
+    if (body.main_toggle_hotkey === null) {
+      payload.main_toggle_hotkey = null
+    } else {
+      if (typeof body.main_toggle_hotkey !== 'string') return toError(400, '`main_toggle_hotkey` must be string or null')
+      const hotkey = body.main_toggle_hotkey.trim()
+      if (!hotkey) return toError(400, '`main_toggle_hotkey` cannot be empty')
+      payload.main_toggle_hotkey = hotkey
+    }
   }
 
   if (typeof body.overlay_edit_hotkey !== 'undefined') {
-    if (typeof body.overlay_edit_hotkey !== 'string') return toError(400, '`overlay_edit_hotkey` must be string')
-    const hotkey = body.overlay_edit_hotkey.trim()
-    if (!hotkey) return toError(400, '`overlay_edit_hotkey` cannot be empty')
-    payload.overlay_edit_hotkey = hotkey
+    if (body.overlay_edit_hotkey === null) {
+      payload.overlay_edit_hotkey = null
+    } else {
+      if (typeof body.overlay_edit_hotkey !== 'string') return toError(400, '`overlay_edit_hotkey` must be string or null')
+      const hotkey = body.overlay_edit_hotkey.trim()
+      if (!hotkey) return toError(400, '`overlay_edit_hotkey` cannot be empty')
+      payload.overlay_edit_hotkey = hotkey
+    }
   }
 
   if (typeof body.app_toggle_hotkey !== 'undefined') {
-    if (typeof body.app_toggle_hotkey !== 'string') return toError(400, '`app_toggle_hotkey` must be string')
-    const hotkey = body.app_toggle_hotkey.trim()
-    if (!hotkey) return toError(400, '`app_toggle_hotkey` cannot be empty')
-    payload.app_toggle_hotkey = hotkey
+    if (body.app_toggle_hotkey === null) {
+      payload.app_toggle_hotkey = null
+    } else {
+      if (typeof body.app_toggle_hotkey !== 'string') return toError(400, '`app_toggle_hotkey` must be string or null')
+      const hotkey = body.app_toggle_hotkey.trim()
+      if (!hotkey) return toError(400, '`app_toggle_hotkey` cannot be empty')
+      payload.app_toggle_hotkey = hotkey
+    }
   }
 
   if (typeof body.app_enabled !== 'undefined') {
     if (typeof body.app_enabled !== 'boolean') return toError(400, '`app_enabled` must be boolean')
     payload.app_enabled = body.app_enabled
+  }
+
+  if (typeof body.block_alt_f4 !== 'undefined') {
+    if (typeof body.block_alt_f4 !== 'boolean') return toError(400, '`block_alt_f4` must be boolean')
+    payload.block_alt_f4 = body.block_alt_f4
   }
 
   if (typeof body.press_enter !== 'undefined') {

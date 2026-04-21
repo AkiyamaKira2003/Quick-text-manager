@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { enforceApiAccess } from '@/lib/api-access'
 
 const DEFAULT_PYTHON_API_BASE_URL = 'http://127.0.0.1:5000'
 const REQUEST_TIMEOUT_MS = 5000
@@ -10,6 +11,9 @@ type SendPayload = {
 }
 
 export async function POST(request: Request) {
+  const accessError = enforceApiAccess(request)
+  if (accessError) return accessError
+
   let rawBody: unknown
   try {
     rawBody = await request.json()

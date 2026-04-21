@@ -35,17 +35,20 @@ events: list[dict[str, Any]] = []
 event_id = 0
 MAX_EVENTS = 400
 conversion_cache: dict[str, tuple[str, bool]] = {}
-DEFAULT_DELAY_RANGE: tuple[float, float] = (0.02, 0.05)
-DEFAULT_SEND_HOTKEY = "4"
-DEFAULT_OVERLAY_TOGGLE_HOTKEY = "ctrl+shift+1"
-DEFAULT_MAIN_TOGGLE_HOTKEY = "delete"
-DEFAULT_OVERLAY_EDIT_HOTKEY = "tab"
-DEFAULT_APP_TOGGLE_HOTKEY = "shift+5"
+DEFAULT_DELAY_RANGE: tuple[float, float] = (0.18, 0.42)
+DEFAULT_KEYSTROKE_DELAY_RANGE: tuple[float, float] = (0.035, 0.09)
+MIN_SEND_INTERVAL_SECONDS = 0.7
+DEFAULT_SEND_HOTKEY = "shift+f5"
+DEFAULT_OVERLAY_TOGGLE_HOTKEY = "shift+f7"
+DEFAULT_MAIN_TOGGLE_HOTKEY = "shift+f8"
+DEFAULT_OVERLAY_EDIT_HOTKEY = "shift+f6"
+DEFAULT_APP_TOGGLE_HOTKEY = "shift+f9"
+DEFAULT_BLOCK_ALT_F4 = False
+ALT_F4_BLOCKING_HOTKEY = "alt+f4"
 DEFAULT_PRESS_ENTER = False
 DEFAULT_HOTKEY_DEBOUNCE_MS = 90
 DEFAULT_ACTION_HOTKEY_DEBOUNCE_MS = 280
 APP_TOGGLE_ACTION_HOTKEY_DEBOUNCE_MS = 1200
-IME_KEYSTROKE_DELAY_SECONDS = 0.02
 CONVERSION_CACHE_MAX_ITEMS = 2000
 HOTKEY_LATCH_RELEASE_TIMEOUT_SECONDS = 2.5
 HOTKEY_LATCH_RELEASE_POLL_SECONDS = 0.015
@@ -237,11 +240,13 @@ send_config = {
     "text": "",
     "send_hotkey": DEFAULT_SEND_HOTKEY,
     "app_toggle_hotkey": DEFAULT_APP_TOGGLE_HOTKEY,
+    "block_alt_f4": DEFAULT_BLOCK_ALT_F4,
     "app_enabled": True,
     "overlay_toggle_hotkey": DEFAULT_OVERLAY_TOGGLE_HOTKEY,
     "main_toggle_hotkey": DEFAULT_MAIN_TOGGLE_HOTKEY,
     "overlay_edit_hotkey": DEFAULT_OVERLAY_EDIT_HOTKEY,
     "delay_range": DEFAULT_DELAY_RANGE,
+    "keystroke_delay_range": DEFAULT_KEYSTROKE_DELAY_RANGE,
     "press_enter": DEFAULT_PRESS_ENTER,
     "hotkey_debounce_ms": DEFAULT_HOTKEY_DEBOUNCE_MS,
 }
@@ -256,16 +261,19 @@ runtime_state = {
     "listener_running": False,
     "send_hotkey_registered": False,
     "app_toggle_registered": False,
+    "block_alt_f4_registered": False,
     "overlay_toggle_registered": False,
     "main_toggle_registered": False,
     "overlay_edit_registered": False,
     "send_hotkey": DEFAULT_SEND_HOTKEY,
     "app_toggle_hotkey": DEFAULT_APP_TOGGLE_HOTKEY,
+    "block_alt_f4": DEFAULT_BLOCK_ALT_F4,
     "app_enabled": True,
     "overlay_toggle_hotkey": DEFAULT_OVERLAY_TOGGLE_HOTKEY,
     "main_toggle_hotkey": DEFAULT_MAIN_TOGGLE_HOTKEY,
     "overlay_edit_hotkey": DEFAULT_OVERLAY_EDIT_HOTKEY,
     "configured_text_length": 0,
+    "keystroke_delay_range": DEFAULT_KEYSTROKE_DELAY_RANGE,
     "press_enter": DEFAULT_PRESS_ENTER,
     "hotkey_debounce_ms": DEFAULT_HOTKEY_DEBOUNCE_MS,
     "last_hotkey_trigger_at": 0.0,
@@ -277,10 +285,11 @@ runtime_state = {
     },
     "last_error": "",
     "last_send_at": 0.0,
+    "last_send_started_monotonic": 0.0,
 }
 
 if KEYBOARD_IMPORT_ERROR:
-    runtime_state["last_error"] = f"keyboard import failed: {KEYBOARD_IMPORT_ERROR}"
+    runtime_state["last_error"] = f"keyboard import failed: {KEYBOARD_IMPORT_ERROR      }"
 elif MOUSE_IMPORT_ERROR:
     runtime_state["last_error"] = f"pynput import failed: {MOUSE_IMPORT_ERROR}"
 
@@ -307,6 +316,24 @@ def parse_delay_range(raw: Any) -> tuple[float, float]:
         raise ValueError("delay_range values must be numbers")
     if min_value < 0 or max_value < 0 or min_value > max_value:
         raise ValueError("delay_range must satisfy 0 <= min <= max")
+
+    return (float(min_value), float(max_value))
+
+
+def parse_keystroke_delay_range(raw: Any) -> tuple[float, float]:
+    if raw is None:
+        return DEFAULT_KEYSTROKE_DELAY_RANGE
+    if not isinstance(raw, list) or len(raw) != 2:
+        raise ValueError("keystroke_delay_range must be [min, max]")
+
+    min_value = raw[0]
+    max_value = raw[1]
+    if not isinstance(min_value, (int, float)) or not isinstance(max_value, (int, float)):
+        raise ValueError("keystroke_delay_range values must be numbers")
+    if min_value < 0 or max_value < 0 or min_value > max_value:
+        raise ValueError("keystroke_delay_range must satisfy 0 <= min <= max")
+    if min_value > 0.4 or max_value > 0.4:
+        raise ValueError("keystroke_delay_range must be <= 0.4 seconds")
 
     return (float(min_value), float(max_value))
 
@@ -378,11 +405,25 @@ def parse_hotkey_tokens(hotkey: str) -> list[str]:
     return ordered
 
 
-def parse_hotkey(raw: Any, fallback: str) -> str:
-    normalized_fallback = normalize_hotkey_string(fallback)
+def parse_hotkey(raw: Any, fallback: str | None, allow_none: bool = False) -> str | None:
+    normalized_fallback = normalize_hotkey_string(fallback) if isinstance(fallback, str) and fallback else None
     if raw is None:
+        if allow_none:
+            return None
+        if normalized_fallback is None:
+            raise ValueError("hotkey cannot be empty")
         return normalized_fallback
     return normalize_hotkey_string(raw)
+
+
+def normalize_optional_hotkey_value(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        normalized = raw.strip()
+        return normalized if normalized else None
+    normalized = str(raw).strip()
+    return normalized if normalized else None
 
 
 def parse_press_enter(raw: Any, fallback: bool) -> bool:
@@ -538,6 +579,25 @@ def warmup_2beolsik_cache(text: str) -> None:
     resolve_2beolsik_sequence(text)
 
 
+def reserve_send_slot() -> bool:
+    with state_lock:
+        now = time.monotonic()
+        last_started = float(runtime_state.get("last_send_started_monotonic", 0.0))
+        if now - last_started < MIN_SEND_INTERVAL_SECONDS:
+            return False
+        runtime_state["last_send_started_monotonic"] = now
+        return True
+
+
+def press_shift_modified_key(base_token: str) -> None:
+    keyboard_lib.press("shift")
+    try:
+        time.sleep(0.004)
+        keyboard_lib.press_and_release(base_token)
+    finally:
+        keyboard_lib.release("shift")
+
+
 def press_ime_token(token: str) -> None:
     if not token:
         return
@@ -556,38 +616,94 @@ def press_ime_token(token: str) -> None:
         keyboard_lib.press_and_release(f"shift+{token.lower()}")
         return
 
+    shifted_base = SHIFTED_SYMBOL_ALIASES.get(token)
+    if shifted_base is not None:
+        try:
+            # Write literal symbol first so output stays identical to preview text.
+            keyboard_lib.write(token)
+            return
+        except Exception:
+            key_token = shifted_base.lower() if len(shifted_base) == 1 and shifted_base.isalpha() else shifted_base
+            try:
+                press_shift_modified_key(key_token)
+                return
+            except Exception:
+                keyboard_lib.press_and_release(f"shift+{key_token}")
+                return
+
     try:
         keyboard_lib.press_and_release(token)
     except Exception:
         keyboard_lib.write(token)
 
 
-def type_ime_keystrokes(sequence: str) -> None:
-    for token in sequence:
+def sleep_random_delay(delay_range: tuple[float, float]) -> None:
+    try:
+        min_delay = float(delay_range[0])
+    except Exception:
+        min_delay = 0.0
+    try:
+        max_delay = float(delay_range[1])
+    except Exception:
+        max_delay = min_delay
+
+    safe_min = max(0.0, min_delay)
+    safe_max = max(safe_min, max_delay)
+    if safe_max <= 0:
+        return
+    time.sleep(random.uniform(safe_min, safe_max))
+
+
+def type_ime_keystrokes(sequence: str, keystroke_delay_range: tuple[float, float]) -> None:
+    last_index = len(sequence) - 1
+    for index, token in enumerate(sequence):
         press_ime_token(token)
-        time.sleep(IME_KEYSTROKE_DELAY_SECONDS)
+        if index < last_index:
+            sleep_random_delay(keystroke_delay_range)
 
 
-def type_text(text: str, delay_range: tuple[float, float], press_enter: bool) -> None:
+def type_plain_keystrokes(text: str, keystroke_delay_range: tuple[float, float]) -> None:
+    last_index = len(text) - 1
+    for index, token in enumerate(text):
+        if token == "\n":
+            keyboard_lib.press_and_release("enter")
+        elif token == "\t":
+            keyboard_lib.press_and_release("tab")
+        else:
+            keyboard_lib.write(token)
+        if index < last_index:
+            sleep_random_delay(keystroke_delay_range)
+
+
+def type_text(
+    text: str,
+    delay_range: tuple[float, float],
+    keystroke_delay_range: tuple[float, float],
+    press_enter: bool,
+) -> None:
     if keyboard_lib is None:
         raise RuntimeError("keyboard module unavailable")
 
-    jitter = random.uniform(delay_range[0], delay_range[1])
     sequence, has_hangul = resolve_2beolsik_sequence(text)
     if has_hangul:
         # Korean game chats often need IME-style key events, not direct unicode injection.
-        type_ime_keystrokes(sequence)
+        type_ime_keystrokes(sequence, keystroke_delay_range)
     else:
-        keyboard_lib.write(text)
+        type_plain_keystrokes(text, keystroke_delay_range)
 
     if press_enter:
         keyboard_lib.press_and_release("enter")
-    time.sleep(jitter)
+    sleep_random_delay(delay_range)
 
 
-def safe_type_text(text: str, delay_range: tuple[float, float], press_enter: bool) -> None:
+def safe_type_text(
+    text: str,
+    delay_range: tuple[float, float],
+    keystroke_delay_range: tuple[float, float],
+    press_enter: bool,
+) -> None:
     try:
-        type_text(text, delay_range, press_enter)
+        type_text(text, delay_range, keystroke_delay_range, press_enter)
         clear_last_error()
         with state_lock:
             runtime_state["last_send_at"] = time.time()
@@ -595,20 +711,34 @@ def safe_type_text(text: str, delay_range: tuple[float, float], press_enter: boo
         set_last_error(f"send failed: {exc}")
 
 
-def start_async_send(text: str, delay_range: tuple[float, float], press_enter: bool) -> bool:
+def start_async_send(
+    text: str,
+    delay_range: tuple[float, float],
+    keystroke_delay_range: tuple[float, float],
+    press_enter: bool,
+) -> bool:
+    if not reserve_send_slot():
+        set_last_error("send throttled: wait before next send")
+        return False
+
     try:
-        threading.Thread(target=safe_type_text, args=(text, delay_range, press_enter), daemon=True).start()
+        threading.Thread(
+            target=safe_type_text,
+            args=(text, delay_range, keystroke_delay_range, press_enter),
+            daemon=True,
+        ).start()
         return True
     except Exception as exc:  # pragma: no cover - runtime environment dependent
         set_last_error(f"send thread failed: {exc}")
         return False
 
 
-def get_send_snapshot() -> tuple[str, tuple[float, float], bool]:
+def get_send_snapshot() -> tuple[str, tuple[float, float], tuple[float, float], bool]:
     with state_lock:
         return (
-            str(send_config["text"]).strip(),
+            str(send_config["text"]),
             tuple(send_config["delay_range"]),
+            tuple(send_config["keystroke_delay_range"]),
             bool(send_config["press_enter"]),
         )
 
@@ -624,15 +754,15 @@ def trigger_configured_send() -> None:
             return
         runtime_state["last_hotkey_trigger_at"] = now
 
-    text, delay_range, press_enter = get_send_snapshot()
-    if not text:
+    text, delay_range, keystroke_delay_range, press_enter = get_send_snapshot()
+    if not text.strip():
         return
-    start_async_send(text, delay_range, press_enter)
+    start_async_send(text, delay_range, keystroke_delay_range, press_enter)
 
 
 def register_hotkey_binding(
     binding_id: str,
-    hotkey: str,
+    hotkey: str | None,
     callback: Any,
     suppress: bool = True,
     trigger_on_release: bool = False,
@@ -644,9 +774,6 @@ def register_hotkey_binding(
         set_last_error(message)
         return False, message
 
-    def wrapped_callback() -> None:
-        run_hotkey_callback_with_latch(binding_id, callback)
-
     with hotkey_lock:
         previous = hotkey_handlers.get(binding_id)
         if previous is not None:
@@ -657,6 +784,12 @@ def register_hotkey_binding(
             hotkey_handlers.pop(binding_id, None)
             hotkey_tokens.pop(binding_id, None)
             hotkey_latches.pop(binding_id, None)
+
+        if hotkey is None:
+            return True, ""
+
+        def wrapped_callback() -> None:
+            run_hotkey_callback_with_latch(binding_id, callback)
 
         try:
             handle = keyboard_lib.add_hotkey(
@@ -696,7 +829,7 @@ def unregister_hotkey_binding(binding_id: str) -> None:
                 pass
 
 
-def register_send_hotkey(hotkey: str) -> tuple[bool, str]:
+def register_send_hotkey(hotkey: str | None) -> tuple[bool, str]:
     ok, error = register_hotkey_binding("text.send_current", hotkey, trigger_configured_send)
     if not ok:
         message = f"send hotkey register failed: {error}"
@@ -707,13 +840,13 @@ def register_send_hotkey(hotkey: str) -> tuple[bool, str]:
         return False, message
 
     with state_lock:
-        runtime_state["send_hotkey_registered"] = True
+        runtime_state["send_hotkey_registered"] = hotkey is not None
         runtime_state["send_hotkey"] = hotkey
     clear_last_error()
     return True, ""
 
 
-def register_app_toggle_hotkey(hotkey: str) -> tuple[bool, str]:
+def register_app_toggle_hotkey(hotkey: str | None) -> tuple[bool, str]:
     # App toggle runs on key release to avoid key-hold auto-repeat loops.
     ok, error = register_action_hotkey(ACTION_APP_TOGGLE, hotkey, suppress=False, trigger_on_release=True)
     if not ok:
@@ -725,8 +858,35 @@ def register_app_toggle_hotkey(hotkey: str) -> tuple[bool, str]:
         return False, message
 
     with state_lock:
-        runtime_state["app_toggle_registered"] = True
+        runtime_state["app_toggle_registered"] = hotkey is not None
         runtime_state["app_toggle_hotkey"] = hotkey
+    clear_last_error()
+    return True, ""
+
+
+def register_alt_f4_blocker(enabled: bool) -> tuple[bool, str]:
+    if not enabled:
+        unregister_hotkey_binding("system.block_alt_f4")
+        with state_lock:
+            runtime_state["block_alt_f4_registered"] = False
+        return True, ""
+
+    ok, error = register_hotkey_binding(
+        "system.block_alt_f4",
+        ALT_F4_BLOCKING_HOTKEY,
+        lambda: None,
+        suppress=True,
+        trigger_on_release=False,
+    )
+    if not ok:
+        message = f"alt+f4 blocker register failed: {error}"
+        set_last_error(message)
+        with state_lock:
+            runtime_state["block_alt_f4_registered"] = False
+        return False, message
+
+    with state_lock:
+        runtime_state["block_alt_f4_registered"] = True
     clear_last_error()
     return True, ""
 
@@ -736,8 +896,10 @@ def disable_non_toggle_runtime_hotkeys() -> None:
     unregister_hotkey_binding(ACTION_OVERLAY_TOGGLE)
     unregister_hotkey_binding(ACTION_MAIN_TOGGLE)
     unregister_hotkey_binding(ACTION_OVERLAY_EDIT)
+    unregister_hotkey_binding("system.block_alt_f4")
     with state_lock:
         runtime_state["send_hotkey_registered"] = False
+        runtime_state["block_alt_f4_registered"] = False
         runtime_state["overlay_toggle_registered"] = False
         runtime_state["main_toggle_registered"] = False
         runtime_state["overlay_edit_registered"] = False
@@ -760,10 +922,17 @@ def trigger_action_hotkey(action_id: str) -> None:
             next_enabled = not bool(runtime_state.get("app_enabled", True))
             runtime_state["app_enabled"] = next_enabled
             send_config["app_enabled"] = next_enabled
-            send_hotkey = str(send_config.get("send_hotkey", DEFAULT_SEND_HOTKEY))
-            overlay_toggle_hotkey = str(send_config.get("overlay_toggle_hotkey", DEFAULT_OVERLAY_TOGGLE_HOTKEY))
-            main_toggle_hotkey = str(send_config.get("main_toggle_hotkey", DEFAULT_MAIN_TOGGLE_HOTKEY))
-            overlay_edit_hotkey = str(send_config.get("overlay_edit_hotkey", DEFAULT_OVERLAY_EDIT_HOTKEY))
+            send_hotkey = normalize_optional_hotkey_value(send_config.get("send_hotkey", DEFAULT_SEND_HOTKEY))
+            overlay_toggle_hotkey = normalize_optional_hotkey_value(
+                send_config.get("overlay_toggle_hotkey", DEFAULT_OVERLAY_TOGGLE_HOTKEY)
+            )
+            main_toggle_hotkey = normalize_optional_hotkey_value(
+                send_config.get("main_toggle_hotkey", DEFAULT_MAIN_TOGGLE_HOTKEY)
+            )
+            overlay_edit_hotkey = normalize_optional_hotkey_value(
+                send_config.get("overlay_edit_hotkey", DEFAULT_OVERLAY_EDIT_HOTKEY)
+            )
+            block_alt_f4 = bool(send_config.get("block_alt_f4", DEFAULT_BLOCK_ALT_F4))
 
         if next_enabled:
             ok, message = register_send_hotkey(send_hotkey)
@@ -774,6 +943,9 @@ def trigger_action_hotkey(action_id: str) -> None:
                 main_toggle_hotkey,
                 overlay_edit_hotkey,
             )
+            if not ok:
+                set_last_error(message)
+            ok, message = register_alt_f4_blocker(block_alt_f4)
             if not ok:
                 set_last_error(message)
         else:
@@ -801,7 +973,7 @@ def trigger_action_hotkey(action_id: str) -> None:
 
 def register_action_hotkey(
     action_id: str,
-    hotkey: str,
+    hotkey: str | None,
     suppress: bool = True,
     trigger_on_release: bool = False,
 ) -> tuple[bool, str]:
@@ -823,9 +995,9 @@ def register_action_hotkey(
 
 
 def register_overlay_mode_hotkeys(
-    overlay_toggle_hotkey: str,
-    main_toggle_hotkey: str,
-    overlay_edit_hotkey: str,
+    overlay_toggle_hotkey: str | None,
+    main_toggle_hotkey: str | None,
+    overlay_edit_hotkey: str | None,
 ) -> tuple[bool, str]:
     registration_plan = [
         (ACTION_OVERLAY_TOGGLE, overlay_toggle_hotkey, "overlay_toggle_registered", "overlay_toggle_hotkey"),
@@ -841,7 +1013,7 @@ def register_overlay_mode_hotkeys(
                 runtime_state[hotkey_key] = hotkey
             return False, message
         with state_lock:
-            runtime_state[registered_key] = True
+            runtime_state[registered_key] = hotkey is not None
             runtime_state[hotkey_key] = hotkey
 
     clear_last_error()
@@ -909,13 +1081,15 @@ def configure():
 
     with state_lock:
         next_text = str(send_config["text"])
-        next_hotkey = str(send_config["send_hotkey"])
-        next_app_toggle_hotkey = str(send_config["app_toggle_hotkey"])
+        next_hotkey = normalize_optional_hotkey_value(send_config["send_hotkey"])
+        next_app_toggle_hotkey = normalize_optional_hotkey_value(send_config["app_toggle_hotkey"])
+        next_block_alt_f4 = bool(send_config.get("block_alt_f4", DEFAULT_BLOCK_ALT_F4))
         next_app_enabled = bool(send_config["app_enabled"])
-        next_overlay_toggle_hotkey = str(send_config["overlay_toggle_hotkey"])
-        next_main_toggle_hotkey = str(send_config["main_toggle_hotkey"])
-        next_overlay_edit_hotkey = str(send_config["overlay_edit_hotkey"])
+        next_overlay_toggle_hotkey = normalize_optional_hotkey_value(send_config["overlay_toggle_hotkey"])
+        next_main_toggle_hotkey = normalize_optional_hotkey_value(send_config["main_toggle_hotkey"])
+        next_overlay_edit_hotkey = normalize_optional_hotkey_value(send_config["overlay_edit_hotkey"])
         next_delay = tuple(send_config["delay_range"])
+        next_keystroke_delay = tuple(send_config["keystroke_delay_range"])
         next_press_enter = bool(send_config["press_enter"])
         next_hotkey_debounce_ms = int(send_config["hotkey_debounce_ms"])
 
@@ -923,19 +1097,23 @@ def configure():
         if "text" in data:
             next_text = str(data.get("text", ""))
         if "hotkey" in data:
-            next_hotkey = parse_hotkey(data.get("hotkey"), next_hotkey)
+            next_hotkey = parse_hotkey(data.get("hotkey"), next_hotkey, allow_none=True)
         if "app_toggle_hotkey" in data:
-            next_app_toggle_hotkey = parse_hotkey(data.get("app_toggle_hotkey"), next_app_toggle_hotkey)
+            next_app_toggle_hotkey = parse_hotkey(data.get("app_toggle_hotkey"), next_app_toggle_hotkey, allow_none=True)
+        if "block_alt_f4" in data:
+            next_block_alt_f4 = parse_boolean_flag(data.get("block_alt_f4"), next_block_alt_f4, "block_alt_f4")
         if "app_enabled" in data:
             next_app_enabled = parse_boolean_flag(data.get("app_enabled"), next_app_enabled, "app_enabled")
         if "overlay_toggle_hotkey" in data:
-            next_overlay_toggle_hotkey = parse_hotkey(data.get("overlay_toggle_hotkey"), next_overlay_toggle_hotkey)
+            next_overlay_toggle_hotkey = parse_hotkey(data.get("overlay_toggle_hotkey"), next_overlay_toggle_hotkey, allow_none=True)
         if "main_toggle_hotkey" in data:
-            next_main_toggle_hotkey = parse_hotkey(data.get("main_toggle_hotkey"), next_main_toggle_hotkey)
+            next_main_toggle_hotkey = parse_hotkey(data.get("main_toggle_hotkey"), next_main_toggle_hotkey, allow_none=True)
         if "overlay_edit_hotkey" in data:
-            next_overlay_edit_hotkey = parse_hotkey(data.get("overlay_edit_hotkey"), next_overlay_edit_hotkey)
+            next_overlay_edit_hotkey = parse_hotkey(data.get("overlay_edit_hotkey"), next_overlay_edit_hotkey, allow_none=True)
         if "delay_range" in data:
             next_delay = parse_delay_range(data.get("delay_range"))
+        if "keystroke_delay_range" in data:
+            next_keystroke_delay = parse_keystroke_delay_range(data.get("keystroke_delay_range"))
         if "press_enter" in data:
             next_press_enter = parse_press_enter(data.get("press_enter"), next_press_enter)
         if "hotkey_debounce_ms" in data:
@@ -949,17 +1127,21 @@ def configure():
         send_config["text"] = next_text
         send_config["send_hotkey"] = next_hotkey
         send_config["app_toggle_hotkey"] = next_app_toggle_hotkey
+        send_config["block_alt_f4"] = next_block_alt_f4
         send_config["app_enabled"] = next_app_enabled
         send_config["overlay_toggle_hotkey"] = next_overlay_toggle_hotkey
         send_config["main_toggle_hotkey"] = next_main_toggle_hotkey
         send_config["overlay_edit_hotkey"] = next_overlay_edit_hotkey
         send_config["delay_range"] = next_delay
+        send_config["keystroke_delay_range"] = next_keystroke_delay
         send_config["press_enter"] = next_press_enter
         send_config["hotkey_debounce_ms"] = next_hotkey_debounce_ms
         runtime_state["configured_text_length"] = len(next_text.strip())
+        runtime_state["keystroke_delay_range"] = next_keystroke_delay
         runtime_state["press_enter"] = next_press_enter
         runtime_state["hotkey_debounce_ms"] = next_hotkey_debounce_ms
         runtime_state["app_toggle_hotkey"] = next_app_toggle_hotkey
+        runtime_state["block_alt_f4"] = next_block_alt_f4
         runtime_state["app_enabled"] = next_app_enabled
         runtime_state["overlay_toggle_hotkey"] = next_overlay_toggle_hotkey
         runtime_state["main_toggle_hotkey"] = next_main_toggle_hotkey
@@ -977,6 +1159,11 @@ def configure():
             "hotkey" in data
             or "app_enabled" in data
             or not runtime_state["send_hotkey_registered"]
+        )
+        need_sync_alt_f4_blocker = bool(
+            "block_alt_f4" in data
+            or "app_enabled" in data
+            or runtime_state["block_alt_f4_registered"] != (app_enabled_now and next_block_alt_f4)
         )
         need_register_overlay_actions = app_enabled_now and bool(
             "overlay_toggle_hotkey" in data
@@ -1008,6 +1195,11 @@ def configure():
         if not ok:
             return jsonify({"ok": False, "error": message}), 500
 
+    if need_sync_alt_f4_blocker:
+        ok, message = register_alt_f4_blocker(app_enabled_now and next_block_alt_f4)
+        if not ok:
+            return jsonify({"ok": False, "error": message}), 500
+
     if need_register_overlay_actions:
         ok, message = register_overlay_mode_hotkeys(
             next_overlay_toggle_hotkey,
@@ -1022,11 +1214,13 @@ def configure():
             "ok": True,
             "send_hotkey": next_hotkey,
             "app_toggle_hotkey": next_app_toggle_hotkey,
+            "block_alt_f4": next_block_alt_f4,
             "app_enabled": next_app_enabled,
             "overlay_toggle_hotkey": next_overlay_toggle_hotkey,
             "main_toggle_hotkey": next_main_toggle_hotkey,
             "overlay_edit_hotkey": next_overlay_edit_hotkey,
             "configured_text_length": len(next_text.strip()),
+            "keystroke_delay_range": next_keystroke_delay,
             "press_enter": next_press_enter,
             "hotkey_debounce_ms": next_hotkey_debounce_ms,
         }
@@ -1036,9 +1230,9 @@ def configure():
 @app.post("/send")
 def send():
     data = request.get_json(silent=True) or {}
-    text = str(data.get("text", "")).strip()
+    text = str(data.get("text", ""))
 
-    if not text:
+    if not text.strip():
         return jsonify({"ok": False, "error": "text is empty"}), 400
 
     if keyboard_lib is None:
@@ -1048,15 +1242,25 @@ def send():
         set_last_error(message)
         return jsonify({"ok": False, "error": message}), 503
 
+    with state_lock:
+        configured_keystroke_delay = tuple(send_config.get("keystroke_delay_range", DEFAULT_KEYSTROKE_DELAY_RANGE))
+
     try:
         delay_range = parse_delay_range(data.get("delay_range"))
+        if "keystroke_delay_range" in data:
+            keystroke_delay_range = parse_keystroke_delay_range(data.get("keystroke_delay_range"))
+        else:
+            keystroke_delay_range = configured_keystroke_delay
         press_enter = parse_press_enter(data.get("press_enter"), DEFAULT_PRESS_ENTER)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    ok = start_async_send(text, delay_range, press_enter)
+    ok = start_async_send(text, delay_range, keystroke_delay_range, press_enter)
     if not ok:
-        return jsonify({"ok": False, "error": "send thread failed"}), 500
+        with state_lock:
+            message = str(runtime_state.get("last_error", "send thread failed")) or "send thread failed"
+        status_code = 429 if "throttled" in message.lower() else 500
+        return jsonify({"ok": False, "error": message}), status_code
 
     return jsonify({"ok": True})
 

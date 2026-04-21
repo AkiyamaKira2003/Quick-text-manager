@@ -5,11 +5,16 @@ import {
   normalizeHotkeyOverrides,
 } from '@/lib/hotkeys'
 
-const OVERLAY_TOGGLE_HOTKEY = 'Ctrl+Shift+1'
-const MAIN_TOGGLE_HOTKEY = 'Delete'
-const OVERLAY_EDIT_HOTKEY = 'Tab'
-const APP_TOGGLE_HOTKEY = 'Shift+5'
-const SEND_HOTKEY = '4'
+const OVERLAY_TOGGLE_HOTKEY = 'Shift+F7'
+const MAIN_TOGGLE_HOTKEY = 'Shift+F8'
+const OVERLAY_EDIT_HOTKEY = 'Shift+F6'
+const APP_TOGGLE_HOTKEY = 'Shift+F9'
+const SEND_HOTKEY = 'Shift+F5'
+const LEGACY_OVERLAY_TOGGLE_HOTKEYS = ['Ctrl+Shift+1', 'Shift+F3']
+const LEGACY_MAIN_TOGGLE_HOTKEYS = ['Delete', 'Shift+F4']
+const LEGACY_OVERLAY_EDIT_HOTKEYS = ['Tab', 'Shift+F2']
+const LEGACY_APP_TOGGLE_HOTKEYS = ['Shift+5', 'Shift+F5']
+const LEGACY_SEND_HOTKEYS = ['4', 'Shift+F1']
 const OVERLAY_FULLSCREEN_SIZE = 10000
 
 const defaultItems: TextItem[] = [
@@ -24,6 +29,7 @@ const defaultItems: TextItem[] = [
 ]
 const defaultSettings: Settings = {
   appEnabled: true,
+  blockAltF4WhenEnabled: false,
   appToggleHotkey: APP_TOGGLE_HOTKEY,
   sendHotkey: SEND_HOTKEY,
   overlayToggleHotkey: OVERLAY_TOGGLE_HOTKEY,
@@ -39,6 +45,44 @@ const defaultSettings: Settings = {
   overlayElementsVisible: true,
   overlayShowIcon: false,
   overlayShowCounter: false,
+  overlayToolsShowTextManager: true,
+  overlayToolsShowImageTranslate: true,
+  overlayToolsPanelVisible: true,
+  overlayToolsActiveTab: 'image',
+  overlayToolsPanelX: 24,
+  overlayToolsPanelY: 92,
+  overlayQuickAddX: 40,
+  overlayQuickAddY: 86,
+  overlayToolsImagePanelX: 824,
+  overlayToolsImagePanelY: 92,
+  overlayToolsTextPanelWidth: 760,
+  overlayToolsTextPanelHeight: 860,
+  overlayToolsImagePanelWidth: 560,
+  overlayToolsImagePanelHeight: 760,
+  overlayToolsOpacity: 1,
+  overlayToolsTextPanelOpacity: 1,
+  overlayToolsImagePanelOpacity: 1,
+  overlayHudContextOpacity: 0.95,
+  overlayPlayShowImageCard: true,
+  overlayImageCardOffsetXPercent: 24,
+  overlayImageCardOffsetYPercent: 20,
+  overlayToolsAutoSearchOnPaste: false,
+  overlayToolsShowWebPreview: true,
+  overlayToolsWebPreviewHeight: 320,
+  overlayImageAutoClipboardEnabled: true,
+  overlayImageAutoClipboardMaxConcurrent: 2,
+  overlayImageHistoryLimit: 40,
+  overlayImageHistoryTtlMinutes: 120,
+  overlayImageCompactHistoryVisibleCount: 5,
+  overlayImageBlockUploadPreview: true,
+  overlayImageBlockResults: true,
+  overlayImageBlockWebPreview: true,
+  overlayImageBlockOcr: true,
+  overlayImageBlockAiReply: true,
+  overlayImageBlockTranslatedReply: true,
+  overlayImageBlockOverview: true,
+  overlayImageBlockGoogleTranslation: true,
+  overlayImageBlockLensUrl: false,
   overlaySnapTolerancePx: 10,
   overlayDragDelayMs: 80,
   overlayDragFrictionMs: 5,
@@ -49,6 +93,8 @@ const defaultSettings: Settings = {
   counterOffsetYPercent: -43,
   opacity: 1,
   noteOpacity: 0.88,
+  iconOpacity: 0.95,
+  counterOpacity: 1,
   textColor: '#ffffff',
   noteColor: '#ffffff',
   fontSize: 48,
@@ -113,6 +159,10 @@ export function normalizeSettings(value?: Partial<Settings> | null): Settings {
   const legacyMode = normalizeLegacyMode(raw.mode)
   const overlayVisible = resolveOverlayVisible(raw, legacyMode, base.overlayVisible)
   const appEnabled = typeof raw.appEnabled === 'boolean' ? raw.appEnabled : base.appEnabled
+  const blockAltF4WhenEnabled =
+    typeof raw.blockAltF4WhenEnabled === 'boolean'
+      ? raw.blockAltF4WhenEnabled
+      : base.blockAltF4WhenEnabled
   const overlayInteractive = typeof raw.overlayInteractive === 'boolean' ? raw.overlayInteractive : base.overlayInteractive
   const overlaySmartClickThrough =
     typeof raw.overlaySmartClickThrough === 'boolean' ? raw.overlaySmartClickThrough : base.overlaySmartClickThrough
@@ -120,18 +170,46 @@ export function normalizeSettings(value?: Partial<Settings> | null): Settings {
     typeof raw.overlayElementsVisible === 'boolean' ? raw.overlayElementsVisible : base.overlayElementsVisible
   const overlayShowIcon = typeof raw.overlayShowIcon === 'boolean' ? raw.overlayShowIcon : base.overlayShowIcon
   const overlayShowCounter = typeof raw.overlayShowCounter === 'boolean' ? raw.overlayShowCounter : base.overlayShowCounter
+  const overlayToolsShowTextManager =
+    typeof raw.overlayToolsShowTextManager === 'boolean'
+      ? raw.overlayToolsShowTextManager
+      : base.overlayToolsShowTextManager
+  const overlayToolsShowImageTranslate =
+    typeof raw.overlayToolsShowImageTranslate === 'boolean'
+      ? raw.overlayToolsShowImageTranslate
+      : base.overlayToolsShowImageTranslate
+  const overlayToolsPanelVisible =
+    typeof raw.overlayToolsPanelVisible === 'boolean' ? raw.overlayToolsPanelVisible : base.overlayToolsPanelVisible
+  const overlayToolsActiveTab = normalizeOverlayToolsTab(raw.overlayToolsActiveTab, base.overlayToolsActiveTab)
+  const overlayPlayShowImageCard =
+    typeof raw.overlayPlayShowImageCard === 'boolean' ? raw.overlayPlayShowImageCard : base.overlayPlayShowImageCard
+  const hasVisibleOverlayTool = overlayToolsShowTextManager || overlayToolsShowImageTranslate
 
-  let sendHotkey = firstString(raw.sendHotkey, raw.modeCycleHotkey, raw.hotkey, raw.modeToggleHotkey)
+  let sendHotkey =
+    raw.sendHotkey === null ? null : firstString(raw.sendHotkey, raw.modeCycleHotkey, raw.hotkey, raw.modeToggleHotkey)
   sendHotkey = normalizeHotkey(sendHotkey, base.sendHotkey)
 
-  const overlayToggleHotkey = normalizeHotkey(raw.overlayToggleHotkey, base.overlayToggleHotkey)
-  const mainToggleHotkey = normalizeHotkey(raw.mainToggleHotkey, base.mainToggleHotkey)
-  const overlayEditHotkey = normalizeHotkey(raw.overlayEditHotkey, base.overlayEditHotkey)
+  let overlayToggleHotkey = normalizeHotkey(raw.overlayToggleHotkey, base.overlayToggleHotkey)
+  let mainToggleHotkey = normalizeHotkey(raw.mainToggleHotkey, base.mainToggleHotkey)
+  let overlayEditHotkey = normalizeHotkey(raw.overlayEditHotkey, base.overlayEditHotkey)
   let appToggleHotkey = normalizeHotkey(raw.appToggleHotkey, base.appToggleHotkey)
   if (normalizeHotkeyToken(appToggleHotkey) === '5') {
     appToggleHotkey = base.appToggleHotkey
   }
   const normalizedHotkeyOverrides = normalizeHotkeyOverrides(raw.hotkeyOverrides)
+  const hasExplicitHotkeyOverrides = Object.keys(normalizedHotkeyOverrides).length > 0
+
+  if (!hasExplicitHotkeyOverrides) {
+    sendHotkey = migrateLegacyDefaultHotkey(sendHotkey, LEGACY_SEND_HOTKEYS, base.sendHotkey)
+    overlayToggleHotkey = migrateLegacyDefaultHotkey(
+      overlayToggleHotkey,
+      LEGACY_OVERLAY_TOGGLE_HOTKEYS,
+      base.overlayToggleHotkey,
+    )
+    mainToggleHotkey = migrateLegacyDefaultHotkey(mainToggleHotkey, LEGACY_MAIN_TOGGLE_HOTKEYS, base.mainToggleHotkey)
+    overlayEditHotkey = migrateLegacyDefaultHotkey(overlayEditHotkey, LEGACY_OVERLAY_EDIT_HOTKEYS, base.overlayEditHotkey)
+    appToggleHotkey = migrateLegacyDefaultHotkey(appToggleHotkey, LEGACY_APP_TOGGLE_HOTKEYS, base.appToggleHotkey)
+  }
 
   const derivedHotkeyOverrides = deriveHotkeyOverridesFromSettings({
     appToggleHotkey,
@@ -150,6 +228,8 @@ export function normalizeSettings(value?: Partial<Settings> | null): Settings {
   const textAlign = normalizeTextAlign(raw.textAlign, base.textAlign)
   const opacity = clampFloat(raw.opacity, 0.2, 1, base.opacity)
   const noteOpacity = clampFloat(raw.noteOpacity, 0.2, 1, base.noteOpacity)
+  const iconOpacity = clampFloat(raw.iconOpacity, 0.2, 1, base.iconOpacity)
+  const counterOpacity = clampFloat(raw.counterOpacity, 0.2, 1, base.counterOpacity)
   const fontSize = clampFloat(raw.fontSize, 24, 120, base.fontSize)
   const noteSize = clampFloat(raw.noteSize, 12, 72, base.noteSize)
   const textColor = normalizeHexColor(raw.textColor, base.textColor)
@@ -159,6 +239,7 @@ export function normalizeSettings(value?: Partial<Settings> | null): Settings {
     ...base,
     ...raw,
     appEnabled,
+    blockAltF4WhenEnabled,
     appToggleHotkey: hotkeyPatch.appToggleHotkey,
     sendHotkey: hotkeyPatch.sendHotkey,
     overlayToggleHotkey: hotkeyPatch.overlayToggleHotkey,
@@ -174,6 +255,113 @@ export function normalizeSettings(value?: Partial<Settings> | null): Settings {
     overlayElementsVisible,
     overlayShowIcon,
     overlayShowCounter,
+    overlayToolsShowTextManager: hasVisibleOverlayTool ? overlayToolsShowTextManager : true,
+    overlayToolsShowImageTranslate: hasVisibleOverlayTool ? overlayToolsShowImageTranslate : false,
+    overlayToolsPanelVisible,
+    overlayToolsActiveTab,
+    overlayToolsPanelX: clampInt(raw.overlayToolsPanelX, -20000, 20000, base.overlayToolsPanelX),
+    overlayToolsPanelY: clampInt(raw.overlayToolsPanelY, -20000, 20000, base.overlayToolsPanelY),
+    overlayQuickAddX: clampInt(raw.overlayQuickAddX, -20000, 20000, base.overlayQuickAddX),
+    overlayQuickAddY: clampInt(raw.overlayQuickAddY, -20000, 20000, base.overlayQuickAddY),
+    overlayToolsImagePanelX: clampInt(raw.overlayToolsImagePanelX, -20000, 20000, base.overlayToolsImagePanelX),
+    overlayToolsImagePanelY: clampInt(raw.overlayToolsImagePanelY, -20000, 20000, base.overlayToolsImagePanelY),
+    overlayToolsTextPanelWidth: clampInt(raw.overlayToolsTextPanelWidth, 520, 1400, base.overlayToolsTextPanelWidth),
+    overlayToolsTextPanelHeight: clampInt(raw.overlayToolsTextPanelHeight, 360, 1100, base.overlayToolsTextPanelHeight),
+    overlayToolsImagePanelWidth: clampInt(raw.overlayToolsImagePanelWidth, 420, 1200, base.overlayToolsImagePanelWidth),
+    overlayToolsImagePanelHeight: clampInt(raw.overlayToolsImagePanelHeight, 320, 1100, base.overlayToolsImagePanelHeight),
+    overlayToolsOpacity: clampFloat(raw.overlayToolsOpacity, 0.35, 1, base.overlayToolsOpacity),
+    overlayToolsTextPanelOpacity: clampFloat(raw.overlayToolsTextPanelOpacity, 0.2, 1, base.overlayToolsTextPanelOpacity),
+    overlayToolsImagePanelOpacity: clampFloat(
+      raw.overlayToolsImagePanelOpacity,
+      0.2,
+      1,
+      base.overlayToolsImagePanelOpacity,
+    ),
+    overlayHudContextOpacity: clampFloat(raw.overlayHudContextOpacity, 0.2, 1, base.overlayHudContextOpacity),
+    overlayPlayShowImageCard,
+    overlayImageCardOffsetXPercent: clampFloat(
+      raw.overlayImageCardOffsetXPercent,
+      -70,
+      70,
+      base.overlayImageCardOffsetXPercent,
+    ),
+    overlayImageCardOffsetYPercent: clampFloat(
+      raw.overlayImageCardOffsetYPercent,
+      -45,
+      45,
+      base.overlayImageCardOffsetYPercent,
+    ),
+    overlayToolsAutoSearchOnPaste:
+      typeof raw.overlayToolsAutoSearchOnPaste === 'boolean'
+        ? raw.overlayToolsAutoSearchOnPaste
+        : base.overlayToolsAutoSearchOnPaste,
+    overlayToolsShowWebPreview:
+      typeof raw.overlayToolsShowWebPreview === 'boolean' ? raw.overlayToolsShowWebPreview : base.overlayToolsShowWebPreview,
+    overlayToolsWebPreviewHeight: clampInt(
+      raw.overlayToolsWebPreviewHeight,
+      200,
+      680,
+      base.overlayToolsWebPreviewHeight,
+    ),
+    overlayImageAutoClipboardEnabled:
+      typeof raw.overlayImageAutoClipboardEnabled === 'boolean'
+        ? raw.overlayImageAutoClipboardEnabled
+        : base.overlayImageAutoClipboardEnabled,
+    overlayImageAutoClipboardMaxConcurrent: clampInt(
+      raw.overlayImageAutoClipboardMaxConcurrent,
+      1,
+      6,
+      base.overlayImageAutoClipboardMaxConcurrent,
+    ),
+    overlayImageHistoryLimit: clampInt(raw.overlayImageHistoryLimit, 10, 200, base.overlayImageHistoryLimit),
+    overlayImageHistoryTtlMinutes: clampInt(
+      raw.overlayImageHistoryTtlMinutes,
+      5,
+      1440,
+      base.overlayImageHistoryTtlMinutes,
+    ),
+    overlayImageCompactHistoryVisibleCount: clampInt(
+      raw.overlayImageCompactHistoryVisibleCount,
+      1,
+      20,
+      base.overlayImageCompactHistoryVisibleCount,
+    ),
+    overlayImageBlockUploadPreview:
+      typeof raw.overlayImageBlockUploadPreview === 'boolean'
+        ? raw.overlayImageBlockUploadPreview
+        : base.overlayImageBlockUploadPreview,
+    overlayImageBlockResults:
+      typeof raw.overlayImageBlockResults === 'boolean'
+        ? raw.overlayImageBlockResults
+        : base.overlayImageBlockResults,
+    overlayImageBlockWebPreview:
+      typeof raw.overlayImageBlockWebPreview === 'boolean'
+        ? raw.overlayImageBlockWebPreview
+        : base.overlayImageBlockWebPreview,
+    overlayImageBlockOcr:
+      typeof raw.overlayImageBlockOcr === 'boolean'
+        ? raw.overlayImageBlockOcr
+        : base.overlayImageBlockOcr,
+    overlayImageBlockAiReply:
+      typeof raw.overlayImageBlockAiReply === 'boolean'
+        ? raw.overlayImageBlockAiReply
+        : base.overlayImageBlockAiReply,
+    overlayImageBlockTranslatedReply:
+      typeof raw.overlayImageBlockTranslatedReply === 'boolean'
+        ? raw.overlayImageBlockTranslatedReply
+        : base.overlayImageBlockTranslatedReply,
+    overlayImageBlockOverview:
+      typeof raw.overlayImageBlockOverview === 'boolean'
+        ? raw.overlayImageBlockOverview
+        : base.overlayImageBlockOverview,
+    overlayImageBlockGoogleTranslation:
+      typeof raw.overlayImageBlockGoogleTranslation === 'boolean'
+        ? raw.overlayImageBlockGoogleTranslation
+        : base.overlayImageBlockGoogleTranslation,
+    overlayImageBlockLensUrl:
+      typeof raw.overlayImageBlockLensUrl === 'boolean'
+        ? raw.overlayImageBlockLensUrl
+        : base.overlayImageBlockLensUrl,
     overlaySnapTolerancePx: clampFloat(raw.overlaySnapTolerancePx, 4, 28, base.overlaySnapTolerancePx),
     overlayDragDelayMs: clampInt(raw.overlayDragDelayMs, 0, 180, base.overlayDragDelayMs),
     overlayDragFrictionMs: clampInt(raw.overlayDragFrictionMs, 0, 24, base.overlayDragFrictionMs),
@@ -189,6 +377,8 @@ export function normalizeSettings(value?: Partial<Settings> | null): Settings {
     noteOffsetYPercent: clampFloat(raw.noteOffsetYPercent, -45, 45, base.noteOffsetYPercent),
     opacity,
     noteOpacity,
+    iconOpacity,
+    counterOpacity,
     textColor,
     noteColor,
     fontSize,
@@ -239,14 +429,29 @@ function normalizeUiLanguage(value: unknown, fallback: UiLanguage): UiLanguage {
   return fallback
 }
 
-function normalizeHotkey(value: unknown, fallback: string) {
+function normalizeOverlayToolsTab(value: unknown, fallback: Settings['overlayToolsActiveTab']): Settings['overlayToolsActiveTab'] {
+  if (value === 'text' || value === 'image') return value
+  return fallback
+}
+
+function normalizeHotkey(value: unknown, fallback: string | null) {
+  if (value === null) return null
   if (typeof value !== 'string') return fallback
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : fallback
 }
 
-function normalizeHotkeyToken(value: string) {
-  return value.replace(/\s+/g, '').toLowerCase()
+function normalizeHotkeyToken(value: string | null) {
+  return String(value || '')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+}
+
+function migrateLegacyDefaultHotkey(value: string | null, legacyDefaults: string[], nextDefault: string | null) {
+  const token = normalizeHotkeyToken(value)
+  const hasLegacyMatch = legacyDefaults.some((legacyDefault) => normalizeHotkeyToken(legacyDefault) === token)
+  if (!hasLegacyMatch) return value
+  return nextDefault
 }
 
 function firstString(...values: unknown[]) {

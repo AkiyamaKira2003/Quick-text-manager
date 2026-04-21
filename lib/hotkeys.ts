@@ -16,7 +16,7 @@ export type HotkeyActionDefinition = {
 
 export type EffectiveHotkeyBinding = {
   action: HotkeyActionDefinition
-  combo: string
+  combo: string | null
   context: HotkeyContext
   source: 'default' | 'setting' | 'override'
 }
@@ -81,7 +81,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'app.toggle_enabled',
     category: 'core',
     context: 'global',
-    defaultCombo: 'Shift+5',
+    defaultCombo: 'Shift+F9',
     settingKey: 'appToggleHotkey',
     labelKey: 'hk.actionAppToggle',
     descriptionKey: 'hk.descAppToggle',
@@ -91,7 +91,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'overlay.toggle_visibility',
     category: 'overlay',
     context: 'global',
-    defaultCombo: 'Ctrl+Shift+1',
+    defaultCombo: 'Shift+F7',
     settingKey: 'overlayToggleHotkey',
     labelKey: 'hk.actionOverlayToggle',
     descriptionKey: 'hk.descOverlayToggle',
@@ -101,7 +101,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'main.toggle_visibility',
     category: 'core',
     context: 'global',
-    defaultCombo: 'Delete',
+    defaultCombo: 'Shift+F8',
     settingKey: 'mainToggleHotkey',
     labelKey: 'hk.actionMainToggle',
     descriptionKey: 'hk.descMainToggle',
@@ -111,7 +111,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'overlay.toggle_interaction',
     category: 'overlay',
     context: 'global',
-    defaultCombo: 'Tab',
+    defaultCombo: 'Shift+F6',
     settingKey: 'overlayEditHotkey',
     labelKey: 'hk.actionOverlayEdit',
     descriptionKey: 'hk.descOverlayEdit',
@@ -121,7 +121,7 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
     id: 'text.send_current',
     category: 'text',
     context: 'global',
-    defaultCombo: '4',
+    defaultCombo: 'Shift+F5',
     settingKey: 'sendHotkey',
     labelKey: 'hk.actionSendCurrent',
     descriptionKey: 'hk.descSendCurrent',
@@ -153,8 +153,14 @@ const RESERVED_COMBOS = new Set(
 
 type BindingLike = {
   actionId: HotkeyActionId
-  combo: string
+  combo: string | null
   context: HotkeyContext
+}
+
+type ParsedCombo = {
+  normalized: string
+  key: string | null
+  modifiers: Set<string>
 }
 
 export function getHotkeyActionById(actionId: HotkeyActionId) {
@@ -220,12 +226,14 @@ export function isTypingTarget(target: EventTarget | null) {
   return !!element.isContentEditable || !!element.closest?.('[contenteditable="true"]')
 }
 
-export function formatComboForDisplay(combo: string) {
+export function formatComboForDisplay(combo: string | null | undefined) {
+  if (!combo) return 'None'
   const normalized = normalizeCombo(combo)
   return normalized ?? combo
 }
 
-export function toElectronAccelerator(combo: string) {
+export function toElectronAccelerator(combo: string | null) {
+  if (!combo) return null
   const normalized = normalizeCombo(combo)
   if (!normalized) return null
 
@@ -247,6 +255,11 @@ export function normalizeHotkeyOverrides(value: unknown): HotkeyOverrides {
   const next: HotkeyOverrides = {}
 
   for (const action of HOTKEY_ACTIONS) {
+    if (Object.prototype.hasOwnProperty.call(raw, action.id) && raw[action.id] === null) {
+      next[action.id] = null
+      continue
+    }
+
     const combo = normalizeCombo(raw[action.id])
     if (!combo) continue
     if (isReservedCombo(combo)) continue
@@ -260,9 +273,15 @@ export function deriveHotkeyOverridesFromSettings(settings: Pick<Settings, Hotke
   const overrides = normalizeHotkeyOverrides(settings.hotkeyOverrides)
 
   for (const action of HOTKEY_ACTIONS) {
-    if (typeof overrides[action.id] === 'string') continue
+    if (hasOverrideKey(overrides, action.id)) continue
 
-    const value = normalizeCombo(settings[action.settingKey])
+    const currentValue = settings[action.settingKey]
+    if (currentValue === null) {
+      overrides[action.id] = null
+      continue
+    }
+
+    const value = normalizeCombo(currentValue)
     const fallback = ACTION_DEFAULT_COMBO.get(action.id) ?? action.defaultCombo
     if (!value || value === fallback) continue
     overrides[action.id] = value
@@ -297,12 +316,21 @@ export function getEffectiveHotkeyBindings(
   const overrides = deriveHotkeyOverridesFromSettings(settings)
 
   return HOTKEY_ACTIONS.map((action) => {
+    if (hasOverrideKey(overrides, action.id) && overrides[action.id] === null) {
+      return { action, combo: null, context: action.context, source: 'override' }
+    }
+
     const overrideCombo = normalizeCombo(overrides[action.id])
     if (overrideCombo) {
       return { action, combo: overrideCombo, context: action.context, source: 'override' }
     }
 
-    const settingCombo = normalizeCombo(settings[action.settingKey])
+    const settingValue = settings[action.settingKey]
+    if (settingValue === null) {
+      return { action, combo: null, context: action.context, source: 'setting' }
+    }
+
+    const settingCombo = normalizeCombo(settingValue)
     if (settingCombo) {
       const fallback = ACTION_DEFAULT_COMBO.get(action.id) ?? action.defaultCombo
       const source = settingCombo === fallback ? 'default' : 'setting'
@@ -342,7 +370,8 @@ export function contextsOverlap(a: HotkeyContext, b: HotkeyContext) {
   return false
 }
 
-export function isReservedCombo(combo: string) {
+export function isReservedCombo(combo: string | null) {
+  if (!combo) return false
   const normalized = normalizeCombo(combo)
   return normalized ? RESERVED_COMBOS.has(normalized) : false
 }
@@ -357,19 +386,19 @@ export function isHotkeyActionActive(
   return settings.appEnabled
 }
 
-function getActionComboWithOverrides(actionId: HotkeyActionId, overrides: HotkeyOverrides) {
+function getActionComboWithOverrides(actionId: HotkeyActionId, overrides: HotkeyOverrides): string | null {
+  if (hasOverrideKey(overrides, actionId) && overrides[actionId] === null) {
+    return null
+  }
+
   const override = normalizeCombo(overrides[actionId])
   if (override) return override
   return ACTION_DEFAULT_COMBO.get(actionId) ?? ''
 }
 
-type ParsedCombo = {
-  normalized: string
-  key: string | null
-  modifiers: Set<string>
-}
+function parseNormalizedCombo(value: string | null): ParsedCombo | null {
+  if (!value) return null
 
-function parseNormalizedCombo(value: string): ParsedCombo | null {
   const normalized = normalizeCombo(value)
   if (!normalized) return null
 
@@ -415,16 +444,31 @@ function modifiersSubsetOf(left: Set<string>, right: Set<string>) {
   return true
 }
 
+function hasOverrideKey(overrides: HotkeyOverrides, actionId: HotkeyActionId) {
+  return Object.prototype.hasOwnProperty.call(overrides, actionId)
+}
+
 function enforceUniqueCombos<T extends Pick<Settings, HotkeySettingKey | 'hotkeyOverrides'>>(input: T): T {
-  const result = { ...input }
+  const result = {
+    ...input,
+    hotkeyOverrides: { ...(input.hotkeyOverrides || {}) },
+  } as T
   const seen: ParsedCombo[] = []
 
   for (const action of HOTKEY_ACTIONS) {
+    if (
+      (hasOverrideKey(result.hotkeyOverrides, action.id) && result.hotkeyOverrides[action.id] === null) ||
+      result[action.settingKey] === null
+    ) {
+      result[action.settingKey] = null
+      result.hotkeyOverrides[action.id] = null
+      continue
+    }
+
     const currentValue = normalizeCombo(result[action.settingKey])
     const fallback = ACTION_DEFAULT_COMBO.get(action.id) ?? action.defaultCombo
     const normalizedFallback = normalizeCombo(fallback) ?? fallback
     const candidate = currentValue ?? normalizedFallback
-    if (!candidate) continue
 
     const parsedCandidate = parseNormalizedCombo(candidate)
     const candidateConflicts = parsedCandidate ? seen.some((item) => hotkeysCanConflict(item, parsedCandidate)) : false

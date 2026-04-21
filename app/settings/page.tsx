@@ -61,6 +61,8 @@ export default function SettingsPage() {
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (event.defaultPrevented) return
+      if ((window as unknown as { __qtHotkeyRecording?: boolean }).__qtHotkeyRecording) return
       event.preventDefault()
       closeWindow()
     }
@@ -84,7 +86,10 @@ export default function SettingsPage() {
             isVisible ? 'qt-settings-slide-open' : 'qt-settings-slide-closed'
           }`}
         >
-          <header className="border-b border-[var(--qt-border)]/65 bg-[color-mix(in_oklab,var(--qt-surface)_86%,transparent)] p-4" style={dragRegionStyle}>
+          <header
+            className="cursor-grab active:cursor-grabbing border-b border-[var(--qt-border)]/65 bg-[color-mix(in_oklab,var(--qt-surface)_86%,transparent)] p-4"
+            style={dragRegionStyle}
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="text-lg font-semibold text-[var(--qt-fg)]">{t(language, 'settings.windowTitle')}</h1>

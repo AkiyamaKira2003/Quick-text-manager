@@ -100,6 +100,13 @@ export default function HotkeyManager({ settings, updateSettings }: HotkeyManage
   }, [applyOverrides, language])
 
   useEffect(() => {
+    ;(window as unknown as { __qtHotkeyRecording?: boolean }).__qtHotkeyRecording = !!recordingActionId
+    return () => {
+      ;(window as unknown as { __qtHotkeyRecording?: boolean }).__qtHotkeyRecording = false
+    }
+  }, [recordingActionId])
+
+  useEffect(() => {
     if (!recordingActionId) return
 
     const action = HOTKEY_ACTIONS.find((item) => item.id === recordingActionId)
@@ -108,8 +115,11 @@ export default function HotkeyManager({ settings, updateSettings }: HotkeyManage
     const handleKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        const nextOverrides = deriveHotkeyOverridesFromSettings(settings)
+        nextOverrides[action.id] = null
+        void applyOverrides(nextOverrides)
         setRecordingActionId(null)
-        setStatusText('')
+        setStatusText(t(language, 'hk.saved', { combo: t(language, 'main.none') }))
         return
       }
 

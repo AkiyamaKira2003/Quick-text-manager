@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, screen, Menu, Tray, nativeImage, dialog, contentTracing, globalShortcut } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, Menu, Tray, nativeImage, dialog, contentTracing, globalShortcut, session } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const net = require('net')
 const { spawn, execSync } = require('child_process')
 const { pathToFileURL } = require('url')
 const { z } = require('zod')
+const lensParserCore = require('../lib/lens-parser-core')
 const fsp = fs.promises
 
 let cachedAutoUpdater = undefined
@@ -21,13 +22,15 @@ function resolveAutoUpdater() {
 
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json')
 const TELEMETRY_PATH = path.join(app.getPath('userData'), 'telemetry.json')
+const OVERLAY_IMAGE_HISTORY_PATH = path.join(app.getPath('userData'), 'overlay-image-history.v1.json')
+const OVERLAY_IMAGE_SESSION_PATH = path.join(app.getPath('userData'), 'overlay-image-session.v1.json')
 const PROFILING_DIR = path.join(app.getPath('userData'), 'profiling')
 const REACT_PROFILE_LOG_PATH = path.join(PROFILING_DIR, 'react-commits.ndjson')
 const RENDERER_PERF_LOG_PATH = path.join(PROFILING_DIR, 'renderer-performance.ndjson')
 const STARTUP_SPLASH_IMAGE_FILENAME = 'logo.png'
 const STARTUP_SPLASH_LEGACY_IMAGE_FILENAME = 'logo.jpg'
 const STARTUP_SPLASH_FALLBACK_IMAGE_FILENAME = 'icon_full.png'
-const APP_DISPLAY_NAME = 'QuickText'
+const APP_DISPLAY_NAME = 'Quick Text'
 const APP_USER_MODEL_ID = 'com.quicktext.desktop'
 const STARTUP_SPLASH_LOAD_TIMEOUT_MS = 60000
 const STARTUP_MAIN_READY_GRACE_MS = 2200
@@ -52,10 +55,10 @@ const PACKAGED_RENDERER_MAX_PORT_SCAN = 40
 const PACKAGED_RENDERER_BOOT_TIMEOUT_MS = 45000
 const STARTUP_SPLASH_LABELS = {
   vi: {
-    firstLaunchNotice: 'Lần chạy đầu sẽ hơi lâu: QuickText đang preload toàn bộ dữ liệu và giao diện...',
-    initializing: 'Đang khởi động QuickText...',
+    firstLaunchNotice: 'Lần chạy đầu sẽ hơi lâu: Quick Text đang preload toàn bộ dữ liệu và giao diện...',
+    initializing: 'Đang khởi động Quick Text...',
     bootRenderer: 'Đang khởi động renderer...',
-    loadingSettings: 'Đang nạp cài đặt QuickText...',
+    loadingSettings: 'Đang nạp cài đặt Quick Text...',
     loadingTelemetry: 'Đang khôi phục thống kê...',
     loadingWindows: 'Đang tạo cửa sổ...',
     creatingMain: 'Đang tạo cửa sổ chính...',
@@ -75,8 +78,8 @@ const STARTUP_SPLASH_LABELS = {
     ready: 'Sẵn sàng',
   },
   en: {
-    firstLaunchNotice: 'First launch may take longer: QuickText is preloading all data and UI assets...',
-    initializing: 'Booting QuickText...',
+    firstLaunchNotice: 'First launch may take longer: Quick Text is preloading all data and UI assets...',
+    initializing: 'Booting Quick Text...',
     bootRenderer: 'Starting renderer...',
     loadingSettings: 'Loading settings...',
     loadingTelemetry: 'Restoring telemetry...',
@@ -100,11 +103,14 @@ const STARTUP_SPLASH_LABELS = {
 }
 const DEFAULT_PYTHON_API_BASE_URL = 'http://127.0.0.1:5000'
 const DEFAULT_PYTHON_SERVICE_EXE_NAME = 'QuickTextPython.exe'
-const OVERLAY_TOGGLE_HOTKEY = 'Ctrl+Shift+1'
-const DEFAULT_OVERLAY_EDIT_HOTKEY = 'Tab'
-const DEFAULT_SEND_HOTKEY = '4'
-const DEFAULT_MAIN_TOGGLE_HOTKEY = 'Delete'
-const DEFAULT_APP_TOGGLE_HOTKEY = 'Shift+5'
+const INPUT_BACKEND_NATIVE = 'native'
+const INPUT_BACKEND_PYTHON = 'python'
+const INPUT_BACKEND_ENV = String(process.env.QT_INPUT_BACKEND || '').trim().toLowerCase()
+const OVERLAY_TOGGLE_HOTKEY = 'Shift+F7'
+const DEFAULT_OVERLAY_EDIT_HOTKEY = 'Shift+F6'
+const DEFAULT_SEND_HOTKEY = 'Shift+F5'
+const DEFAULT_MAIN_TOGGLE_HOTKEY = 'Shift+F8'
+const DEFAULT_APP_TOGGLE_HOTKEY = 'Shift+F9'
 const OVERLAY_FULLSCREEN_SIZE = 10000
 const SETTINGS_WRITE_DEBOUNCE_MS = 160
 const PYTHON_SEND_TIMEOUT_MS = 5000
@@ -124,6 +130,11 @@ const TELEMETRY_WRITE_DEBOUNCE_MS = 220
 const TRAY_MENU_REFRESH_DEBOUNCE_MS = 90
 const OVERLAY_REFIT_DEBOUNCE_MS = 220
 const OVERLAY_DEFER_BOOT_MS = 260
+const OVERLAY_SMART_ZONE_POLL_MS = parseIntegerEnv('QT_OVERLAY_SMART_ZONE_POLL_MS', 30, 10, 120)
+const OVERLAY_QUICK_ADD_HEIGHT = 56
+const OVERLAY_QUICK_ADD_GUTTER = 8
+const OVERLAY_QUICK_ADD_MIN_WIDTH = 280
+const OVERLAY_QUICK_ADD_MAX_WIDTH = 520
 const ELECTRON_HOTKEY_ACTION_DEBOUNCE_MS = 280
 const ELECTRON_HOTKEY_TOGGLE_DEBOUNCE_MS = 900
 const STARTUP_PHASE_LOG_ENABLED = parseBooleanEnv('QT_STARTUP_PHASE_LOG', false)
@@ -172,6 +183,8 @@ const RESERVED_HOTKEYS = new Set(
 )
 const TRAY_LABELS = {
   vi: {
+    enableApp: 'Bật App',
+    disableApp: 'Tắt App',
     showManager: 'Hiện Manager',
     hideManager: 'Ẩn Manager',
     settings: 'Cài đặt',
@@ -182,6 +195,8 @@ const TRAY_LABELS = {
     quit: 'Thoát',
   },
   en: {
+    enableApp: 'Enable App',
+    disableApp: 'Disable App',
     showManager: 'Show Manager',
     hideManager: 'Hide Manager',
     settings: 'Settings',
@@ -194,13 +209,13 @@ const TRAY_LABELS = {
 }
 const ADMIN_MESSAGES = {
   vi: {
-    title: 'QuickText cần quyền quản trị viên',
-    body: 'QuickText cần quyền quản trị để chạy overlay trên game. Vui lòng mở app bằng quyền quản trị viên.',
+    title: 'Quick Text cần quyền quản trị viên',
+    body: 'Quick Text cần quyền quản trị để chạy overlay trên game. Vui lòng mở app bằng quyền quản trị viên.',
     relaunchFailed: '[admin] Không thể tự mở lại bằng quyền quản trị. Hãy chạy app bằng Run as administrator.',
   },
   en: {
-    title: 'QuickText requires Administrator',
-    body: 'QuickText needs Administrator permission to run overlay above games. Please run the app as Administrator.',
+    title: 'Quick Text requires Administrator',
+    body: 'Quick Text needs Administrator permission to run overlay above games. Please run the app as Administrator.',
     relaunchFailed: '[admin] Unable to relaunch as Administrator. Run the app as Admin manually.',
   },
 }
@@ -209,9 +224,18 @@ const PYTHON_POLICY = {
   configure: { timeoutMs: PYTHON_CONFIG_TIMEOUT_MS, retries: 1, baseBackoffMs: PYTHON_RETRY_BASE_DELAY_MS },
   events: { timeoutMs: PYTHON_EVENTS_TIMEOUT_MS, retries: 0, baseBackoffMs: PYTHON_RETRY_BASE_DELAY_MS },
 }
+const GOOGLE_LENS_UPLOAD_BASE = 'https://lens.google.com/v3/upload'
+const GOOGLE_ORIGIN = 'https://www.google.com'
+const LENS_SEARCH_TIMEOUT_MS = 14000
+const LENS_FALLBACK_SCRAPE_TIMEOUT_MS = 16000
+const LENS_FALLBACK_SCRAPE_POLL_MS = 500
+const LENS_MAX_IMAGE_BYTES = 20 * 1024 * 1024
+const LENS_DEFAULT_LIMIT = 6
+const LENS_MAX_LIMIT = 10
 
 const DEFAULT_SETTINGS = {
   appEnabled: true,
+  blockAltF4WhenEnabled: false,
   appToggleHotkey: DEFAULT_APP_TOGGLE_HOTKEY,
   sendHotkey: DEFAULT_SEND_HOTKEY,
   overlayToggleHotkey: OVERLAY_TOGGLE_HOTKEY,
@@ -227,6 +251,44 @@ const DEFAULT_SETTINGS = {
   overlayElementsVisible: true,
   overlayShowIcon: false,
   overlayShowCounter: false,
+  overlayToolsShowTextManager: true,
+  overlayToolsShowImageTranslate: true,
+  overlayToolsPanelVisible: true,
+  overlayToolsActiveTab: 'image',
+  overlayToolsPanelX: 24,
+  overlayToolsPanelY: 92,
+  overlayQuickAddX: 40,
+  overlayQuickAddY: 86,
+  overlayToolsImagePanelX: 824,
+  overlayToolsImagePanelY: 92,
+  overlayToolsTextPanelWidth: 760,
+  overlayToolsTextPanelHeight: 860,
+  overlayToolsImagePanelWidth: 560,
+  overlayToolsImagePanelHeight: 760,
+  overlayToolsOpacity: 1,
+  overlayToolsTextPanelOpacity: 1,
+  overlayToolsImagePanelOpacity: 1,
+  overlayHudContextOpacity: 0.95,
+  overlayPlayShowImageCard: true,
+  overlayImageCardOffsetXPercent: 24,
+  overlayImageCardOffsetYPercent: 20,
+  overlayToolsAutoSearchOnPaste: false,
+  overlayToolsShowWebPreview: true,
+  overlayToolsWebPreviewHeight: 320,
+  overlayImageAutoClipboardEnabled: true,
+  overlayImageAutoClipboardMaxConcurrent: 2,
+  overlayImageHistoryLimit: 40,
+  overlayImageHistoryTtlMinutes: 120,
+  overlayImageCompactHistoryVisibleCount: 5,
+  overlayImageBlockUploadPreview: true,
+  overlayImageBlockResults: true,
+  overlayImageBlockWebPreview: true,
+  overlayImageBlockOcr: true,
+  overlayImageBlockAiReply: true,
+  overlayImageBlockTranslatedReply: true,
+  overlayImageBlockOverview: true,
+  overlayImageBlockGoogleTranslation: true,
+  overlayImageBlockLensUrl: false,
   overlaySnapTolerancePx: 10,
   overlayDragDelayMs: 80,
   overlayDragFrictionMs: 5,
@@ -300,11 +362,22 @@ const SETTINGS_WINDOW_DEFAULT = {
 const SETTINGS_WINDOW_GAP_PX = 12
 const SETTINGS_WINDOW_SAFE_MARGIN_PX = 8
 const SETTINGS_WINDOW_SYNC_DEBOUNCE_MS = 16
+const TRAY_MENU_WINDOW_WIDTH = 336
+const TRAY_MENU_WINDOW_HEIGHT = 368
+const TRAY_MENU_WINDOW_MARGIN = 8
+const TRAY_MENU_REOPEN_SUPPRESS_MS = 220
+const OVERLAY_IMAGE_WINDOW_WIDTH = 760
+const OVERLAY_IMAGE_WINDOW_HEIGHT = 860
 let mainWindow = null
 let overlayWindow = null
+let overlayImageWindow = null
 let hotkeyWindow = null
 let startupSplashWindow = null
 let tray = null
+let trayMenuWindow = null
+let trayNativeFallbackMenu = null
+let trayNativeFallbackEnabled = false
+let trayMenuSuppressOpenUntil = 0
 let isQuitting = false
 let runtimeCleanedUp = false
 let currentSettings = null
@@ -319,7 +392,14 @@ let quittingAfterSettingsFlush = false
 let hotkeySignature = ''
 let electronHotkeyRegistrations = []
 let electronHotkeyLastTriggeredAt = new Map()
+let standaloneAppToggleHotkeyRegistration = ''
+let altF4BlockShortcutRegistered = false
 let overlayMousePassThrough = true
+let overlayInteractiveZones = {
+  quickAdd: null,
+}
+let overlaySmartZonePollTimer = null
+let overlaySmartZoneInsideLast = false
 let overlayBoundsSignature = ''
 let telemetryWritePromise = Promise.resolve()
 let pendingTelemetryWrite = null
@@ -355,6 +435,8 @@ let managedPythonRetryAfter = 0
 let managedPythonHealthAt = 0
 let managedPythonHealthOk = false
 let managedPythonLaunchCommand = ''
+let nativeInputCore = null
+let inputBackendName = ''
 let screenListenersRegistered = false
 let updateRuntime = createDefaultUpdateRuntime()
 let updateCheckPromise = null
@@ -1132,6 +1214,39 @@ async function writeSettingsToDisk(settings) {
   await writeJsonAtomicFile(SETTINGS_PATH, settings)
 }
 
+async function loadOverlayImageHistory() {
+  try {
+    const raw = await fsp.readFile(OVERLAY_IMAGE_HISTORY_PATH, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+  } catch {
+    return []
+  }
+}
+
+async function saveOverlayImageHistory(entries) {
+  const safeEntries = Array.isArray(entries) ? entries : []
+  await writeJsonAtomicFile(OVERLAY_IMAGE_HISTORY_PATH, safeEntries)
+  return { ok: true }
+}
+
+async function loadOverlayImageSession() {
+  try {
+    const raw = await fsp.readFile(OVERLAY_IMAGE_SESSION_PATH, 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+async function saveOverlayImageSession(sessionPayload) {
+  const safePayload = sessionPayload && typeof sessionPayload === 'object' ? sessionPayload : {}
+  await writeJsonAtomicFile(OVERLAY_IMAGE_SESSION_PATH, safePayload)
+  return { ok: true }
+}
+
 function flushPendingSettingsWrite(options = {}) {
   const throwOnError = !!options.throwOnError
   if (settingsWriteTimer) {
@@ -1457,6 +1572,10 @@ function normalizeSettings(saved) {
             ? true
             : DEFAULT_SETTINGS.overlayVisible
   merged.appEnabled = typeof input.appEnabled === 'boolean' ? input.appEnabled : DEFAULT_SETTINGS.appEnabled
+  merged.blockAltF4WhenEnabled =
+    typeof input.blockAltF4WhenEnabled === 'boolean'
+      ? input.blockAltF4WhenEnabled
+      : DEFAULT_SETTINGS.blockAltF4WhenEnabled
   merged.overlayInteractive =
     typeof input.overlayInteractive === 'boolean' ? input.overlayInteractive : DEFAULT_SETTINGS.overlayInteractive
   merged.overlaySmartClickThrough =
@@ -1469,6 +1588,179 @@ function normalizeSettings(saved) {
     typeof input.overlayShowIcon === 'boolean' ? input.overlayShowIcon : DEFAULT_SETTINGS.overlayShowIcon
   merged.overlayShowCounter =
     typeof input.overlayShowCounter === 'boolean' ? input.overlayShowCounter : DEFAULT_SETTINGS.overlayShowCounter
+  merged.overlayToolsShowTextManager =
+    typeof input.overlayToolsShowTextManager === 'boolean'
+      ? input.overlayToolsShowTextManager
+      : DEFAULT_SETTINGS.overlayToolsShowTextManager
+  merged.overlayToolsShowImageTranslate =
+    typeof input.overlayToolsShowImageTranslate === 'boolean'
+      ? input.overlayToolsShowImageTranslate
+      : DEFAULT_SETTINGS.overlayToolsShowImageTranslate
+  merged.overlayToolsPanelVisible =
+    typeof input.overlayToolsPanelVisible === 'boolean'
+      ? input.overlayToolsPanelVisible
+      : DEFAULT_SETTINGS.overlayToolsPanelVisible
+  merged.overlayToolsActiveTab =
+    input.overlayToolsActiveTab === 'text' || input.overlayToolsActiveTab === 'image'
+      ? input.overlayToolsActiveTab
+      : DEFAULT_SETTINGS.overlayToolsActiveTab
+  merged.overlayToolsPanelX = clampInt(input.overlayToolsPanelX, -20000, 20000, DEFAULT_SETTINGS.overlayToolsPanelX)
+  merged.overlayToolsPanelY = clampInt(input.overlayToolsPanelY, -20000, 20000, DEFAULT_SETTINGS.overlayToolsPanelY)
+  merged.overlayQuickAddX = clampInt(input.overlayQuickAddX, -20000, 20000, DEFAULT_SETTINGS.overlayQuickAddX)
+  merged.overlayQuickAddY = clampInt(input.overlayQuickAddY, -20000, 20000, DEFAULT_SETTINGS.overlayQuickAddY)
+  merged.overlayToolsImagePanelX = clampInt(
+    input.overlayToolsImagePanelX,
+    -20000,
+    20000,
+    DEFAULT_SETTINGS.overlayToolsImagePanelX,
+  )
+  merged.overlayToolsImagePanelY = clampInt(
+    input.overlayToolsImagePanelY,
+    -20000,
+    20000,
+    DEFAULT_SETTINGS.overlayToolsImagePanelY,
+  )
+  merged.overlayToolsTextPanelWidth = clampInt(
+    input.overlayToolsTextPanelWidth,
+    520,
+    1400,
+    DEFAULT_SETTINGS.overlayToolsTextPanelWidth,
+  )
+  merged.overlayToolsTextPanelHeight = clampInt(
+    input.overlayToolsTextPanelHeight,
+    360,
+    1100,
+    DEFAULT_SETTINGS.overlayToolsTextPanelHeight,
+  )
+  merged.overlayToolsImagePanelWidth = clampInt(
+    input.overlayToolsImagePanelWidth,
+    420,
+    1200,
+    DEFAULT_SETTINGS.overlayToolsImagePanelWidth,
+  )
+  merged.overlayToolsImagePanelHeight = clampInt(
+    input.overlayToolsImagePanelHeight,
+    320,
+    1100,
+    DEFAULT_SETTINGS.overlayToolsImagePanelHeight,
+  )
+  if (!merged.overlayToolsShowTextManager && !merged.overlayToolsShowImageTranslate) {
+    merged.overlayToolsShowTextManager = true
+    merged.overlayToolsShowImageTranslate = false
+  }
+  merged.overlayToolsOpacity = clampFloat(input.overlayToolsOpacity, 0.35, 1, DEFAULT_SETTINGS.overlayToolsOpacity)
+  merged.overlayToolsTextPanelOpacity = clampFloat(
+    input.overlayToolsTextPanelOpacity,
+    0.2,
+    1,
+    DEFAULT_SETTINGS.overlayToolsTextPanelOpacity,
+  )
+  merged.overlayToolsImagePanelOpacity = clampFloat(
+    input.overlayToolsImagePanelOpacity,
+    0.2,
+    1,
+    DEFAULT_SETTINGS.overlayToolsImagePanelOpacity,
+  )
+  merged.overlayHudContextOpacity = clampFloat(
+    input.overlayHudContextOpacity,
+    0.2,
+    1,
+    DEFAULT_SETTINGS.overlayHudContextOpacity,
+  )
+  merged.overlayPlayShowImageCard =
+    typeof input.overlayPlayShowImageCard === 'boolean'
+      ? input.overlayPlayShowImageCard
+      : DEFAULT_SETTINGS.overlayPlayShowImageCard
+  merged.overlayImageCardOffsetXPercent = clampFloat(
+    input.overlayImageCardOffsetXPercent,
+    -70,
+    70,
+    DEFAULT_SETTINGS.overlayImageCardOffsetXPercent,
+  )
+  merged.overlayImageCardOffsetYPercent = clampFloat(
+    input.overlayImageCardOffsetYPercent,
+    -45,
+    45,
+    DEFAULT_SETTINGS.overlayImageCardOffsetYPercent,
+  )
+  merged.overlayToolsAutoSearchOnPaste =
+    typeof input.overlayToolsAutoSearchOnPaste === 'boolean'
+      ? input.overlayToolsAutoSearchOnPaste
+      : DEFAULT_SETTINGS.overlayToolsAutoSearchOnPaste
+  merged.overlayToolsShowWebPreview =
+    typeof input.overlayToolsShowWebPreview === 'boolean'
+      ? input.overlayToolsShowWebPreview
+      : DEFAULT_SETTINGS.overlayToolsShowWebPreview
+  merged.overlayToolsWebPreviewHeight = clampInt(
+    input.overlayToolsWebPreviewHeight,
+    200,
+    680,
+    DEFAULT_SETTINGS.overlayToolsWebPreviewHeight,
+  )
+  merged.overlayImageAutoClipboardEnabled =
+    typeof input.overlayImageAutoClipboardEnabled === 'boolean'
+      ? input.overlayImageAutoClipboardEnabled
+      : DEFAULT_SETTINGS.overlayImageAutoClipboardEnabled
+  merged.overlayImageAutoClipboardMaxConcurrent = clampInt(
+    input.overlayImageAutoClipboardMaxConcurrent,
+    1,
+    6,
+    DEFAULT_SETTINGS.overlayImageAutoClipboardMaxConcurrent,
+  )
+  merged.overlayImageHistoryLimit = clampInt(
+    input.overlayImageHistoryLimit,
+    10,
+    200,
+    DEFAULT_SETTINGS.overlayImageHistoryLimit,
+  )
+  merged.overlayImageHistoryTtlMinutes = clampInt(
+    input.overlayImageHistoryTtlMinutes,
+    5,
+    1440,
+    DEFAULT_SETTINGS.overlayImageHistoryTtlMinutes,
+  )
+  merged.overlayImageCompactHistoryVisibleCount = clampInt(
+    input.overlayImageCompactHistoryVisibleCount,
+    1,
+    20,
+    DEFAULT_SETTINGS.overlayImageCompactHistoryVisibleCount,
+  )
+  merged.overlayImageBlockUploadPreview =
+    typeof input.overlayImageBlockUploadPreview === 'boolean'
+      ? input.overlayImageBlockUploadPreview
+      : DEFAULT_SETTINGS.overlayImageBlockUploadPreview
+  merged.overlayImageBlockResults =
+    typeof input.overlayImageBlockResults === 'boolean'
+      ? input.overlayImageBlockResults
+      : DEFAULT_SETTINGS.overlayImageBlockResults
+  merged.overlayImageBlockWebPreview =
+    typeof input.overlayImageBlockWebPreview === 'boolean'
+      ? input.overlayImageBlockWebPreview
+      : DEFAULT_SETTINGS.overlayImageBlockWebPreview
+  merged.overlayImageBlockOcr =
+    typeof input.overlayImageBlockOcr === 'boolean'
+      ? input.overlayImageBlockOcr
+      : DEFAULT_SETTINGS.overlayImageBlockOcr
+  merged.overlayImageBlockAiReply =
+    typeof input.overlayImageBlockAiReply === 'boolean'
+      ? input.overlayImageBlockAiReply
+      : DEFAULT_SETTINGS.overlayImageBlockAiReply
+  merged.overlayImageBlockTranslatedReply =
+    typeof input.overlayImageBlockTranslatedReply === 'boolean'
+      ? input.overlayImageBlockTranslatedReply
+      : DEFAULT_SETTINGS.overlayImageBlockTranslatedReply
+  merged.overlayImageBlockOverview =
+    typeof input.overlayImageBlockOverview === 'boolean'
+      ? input.overlayImageBlockOverview
+      : DEFAULT_SETTINGS.overlayImageBlockOverview
+  merged.overlayImageBlockGoogleTranslation =
+    typeof input.overlayImageBlockGoogleTranslation === 'boolean'
+      ? input.overlayImageBlockGoogleTranslation
+      : DEFAULT_SETTINGS.overlayImageBlockGoogleTranslation
+  merged.overlayImageBlockLensUrl =
+    typeof input.overlayImageBlockLensUrl === 'boolean'
+      ? input.overlayImageBlockLensUrl
+      : DEFAULT_SETTINGS.overlayImageBlockLensUrl
   merged.overlaySnapTolerancePx = clampFloat(
     input.overlaySnapTolerancePx,
     4,
@@ -1484,7 +1776,8 @@ function normalizeSettings(saved) {
     DEFAULT_SETTINGS.overlayPreciseDragFactor,
   )
 
-  const requestedSendHotkey = firstString(input.sendHotkey, input.modeCycleHotkey, input.hotkey, input.modeToggleHotkey)
+  const requestedSendHotkey =
+    input.sendHotkey === null ? null : firstString(input.sendHotkey, input.modeCycleHotkey, input.hotkey, input.modeToggleHotkey)
   merged.sendHotkey = normalizeHotkey(requestedSendHotkey, DEFAULT_SETTINGS.sendHotkey)
   merged.appToggleHotkey = normalizeHotkey(input.appToggleHotkey, DEFAULT_SETTINGS.appToggleHotkey)
   if (normalizeHotkeyToken(merged.appToggleHotkey) === '5') {
@@ -1569,6 +1862,7 @@ function firstString(...values) {
 }
 
 function normalizeHotkey(value, fallback) {
+  if (value === null) return null
   if (typeof value !== 'string') return fallback
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : fallback
@@ -1580,6 +1874,10 @@ function normalizeHotkeyOverrides(value) {
   const next = {}
 
   for (const action of HOTKEY_ACTIONS) {
+    if (Object.prototype.hasOwnProperty.call(raw, action.id) && raw[action.id] === null) {
+      next[action.id] = null
+      continue
+    }
     const combo = normalizeHotkey(raw[action.id], '')
     if (!combo) continue
     if (isReservedHotkey(combo)) continue
@@ -1593,9 +1891,13 @@ function deriveHotkeyOverridesFromSettings(settings) {
   const overrides = normalizeHotkeyOverrides(settings.hotkeyOverrides)
 
   for (const action of HOTKEY_ACTIONS) {
-    if (typeof overrides[action.id] === 'string') continue
+    if (Object.prototype.hasOwnProperty.call(overrides, action.id)) continue
 
     const current = normalizeHotkey(settings[action.settingKey], action.defaultCombo)
+    if (current === null) {
+      overrides[action.id] = null
+      continue
+    }
     if (!current) continue
     if (isSameHotkey(current, action.defaultCombo)) continue
     overrides[action.id] = current
@@ -1620,8 +1922,11 @@ function createHotkeyPatchFromOverrides(overrides) {
 
 function getActionComboWithOverrides(actionId, overrides) {
   const action = HOTKEY_ACTIONS.find((item) => item.id === actionId)
-  if (!action) return ''
+  if (!action) return null
 
+  if (Object.prototype.hasOwnProperty.call(overrides, actionId) && overrides[actionId] === null) {
+    return null
+  }
   const overrideValue = normalizeHotkey(overrides[actionId], '')
   if (overrideValue && !isReservedHotkey(overrideValue)) {
     return overrideValue
@@ -1635,6 +1940,15 @@ function enforceUniqueHotkeys(patch) {
   const seen = []
 
   for (const action of HOTKEY_ACTIONS) {
+    if (
+      (Object.prototype.hasOwnProperty.call(next.hotkeyOverrides, action.id) && next.hotkeyOverrides[action.id] === null) ||
+      next[action.settingKey] === null
+    ) {
+      next[action.settingKey] = null
+      next.hotkeyOverrides[action.id] = null
+      continue
+    }
+
     let combo = normalizeHotkey(next[action.settingKey], action.defaultCombo)
     let token = normalizeHotkeyToken(combo)
     let parsed = parseHotkeyComboParts(combo)
@@ -1652,6 +1966,80 @@ function enforceUniqueHotkeys(patch) {
   }
 
   return next
+}
+
+function resolvePreferredInputBackend() {
+  if (INPUT_BACKEND_ENV === INPUT_BACKEND_NATIVE || INPUT_BACKEND_ENV === INPUT_BACKEND_PYTHON) {
+    return INPUT_BACKEND_ENV
+  }
+  return INPUT_BACKEND_PYTHON
+}
+
+function resolveNativeInputCorePath() {
+  const candidates = [
+    path.resolve(__dirname, 'native', 'build', 'Release', 'quicktext_native.node'),
+    path.resolve(__dirname, '..', 'electron', 'native', 'build', 'Release', 'quicktext_native.node'),
+    path.resolve(process.resourcesPath || '', 'app.asar.unpacked', 'electron', 'native', 'build', 'Release', 'quicktext_native.node'),
+    path.resolve(process.resourcesPath || '', 'electron', 'native', 'build', 'Release', 'quicktext_native.node'),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return ''
+}
+
+function tryLoadNativeInputCore() {
+  if (nativeInputCore) return nativeInputCore
+
+  const addonPath = resolveNativeInputCorePath()
+  if (!addonPath) {
+    throw new Error('Native input core binary is missing (quicktext_native.node).')
+  }
+
+  // eslint-disable-next-line global-require
+  const loaded = require(addonPath)
+  if (!loaded || typeof loaded.configure !== 'function' || typeof loaded.send !== 'function' || typeof loaded.events !== 'function') {
+    throw new Error('Native input core is invalid.')
+  }
+  if (typeof loaded.init === 'function') {
+    loaded.init()
+  }
+  nativeInputCore = loaded
+  return nativeInputCore
+}
+
+function ensureInputBackendReady() {
+  if (inputBackendName) return inputBackendName
+  const preferred = resolvePreferredInputBackend()
+
+  if (preferred === INPUT_BACKEND_PYTHON) {
+    inputBackendName = INPUT_BACKEND_PYTHON
+    return inputBackendName
+  }
+
+  try {
+    tryLoadNativeInputCore()
+    inputBackendName = INPUT_BACKEND_NATIVE
+    return inputBackendName
+  } catch (error) {
+    safeConsoleError('[input-backend] native unavailable:', error)
+    const message = error instanceof Error ? error.message : 'Native input core failed to initialize.'
+    throw new Error(`${message} Build native core with "npm run build:native-core" or set QT_INPUT_BACKEND=python for fallback.`)
+  }
+}
+
+function isNativeInputBackendActive() {
+  return ensureInputBackendReady() === INPUT_BACKEND_NATIVE
+}
+
+function toInputBridgeError(status, error, correlationId) {
+  return {
+    ok: false,
+    status,
+    error,
+    correlationId,
+  }
 }
 
 function isReservedHotkey(combo) {
@@ -2467,7 +2855,7 @@ function buildStartupSplashMarkup(imageUrl, layoutMetrics = {}) {
   <body>
     <div class="splash-root">
       <div class="logo-ellipse">
-        <img id="qtSplashImage" alt="QuickText Splash" draggable="false" />
+        <img id="qtSplashImage" alt="Quick Text Splash" draggable="false" />
       </div>
       <div class="status-panel">
         <div class="status-row">
@@ -2796,7 +3184,7 @@ function isLocalPythonBaseUrl() {
 function getPythonServiceUnavailableMessage() {
   const reason = managedPythonLastError.trim()
   if (!reason) {
-    return 'Python service unavailable. Ensure bundled QuickTextPython.exe exists or Python 3 can run `python/tool.py`.'
+    return 'Python service unavailable. Ensure bundled service executable exists or Python 3 can run `python/tool.py`.'
   }
   return `Python service unavailable. ${reason}`
 }
@@ -3203,8 +3591,8 @@ async function handlePythonSend(rawPayload) {
   }
 
   const body = rawPayload
-  const text = typeof body.text === 'string' ? body.text.trim() : ''
-  if (!text) {
+  const text = typeof body.text === 'string' ? body.text : ''
+  if (!text.trim()) {
     return toPythonError(400, '`text` is required', correlationId)
   }
 
@@ -3286,45 +3674,70 @@ async function handlePythonConfigure(rawPayload) {
   }
 
   if (typeof body.hotkey !== 'undefined') {
-    if (typeof body.hotkey !== 'string') return toPythonError(400, '`hotkey` must be string', correlationId)
-    const hotkey = body.hotkey.trim()
-    if (!hotkey) return toPythonError(400, '`hotkey` cannot be empty', correlationId)
-    payload.hotkey = hotkey
+    if (body.hotkey === null) {
+      payload.hotkey = null
+    } else {
+      if (typeof body.hotkey !== 'string') return toPythonError(400, '`hotkey` must be string or null', correlationId)
+      const hotkey = body.hotkey.trim()
+      if (!hotkey) return toPythonError(400, '`hotkey` cannot be empty', correlationId)
+      payload.hotkey = hotkey
+    }
   }
 
   if (typeof body.overlay_toggle_hotkey !== 'undefined') {
-    if (typeof body.overlay_toggle_hotkey !== 'string') {
-      return toPythonError(400, '`overlay_toggle_hotkey` must be string', correlationId)
+    if (body.overlay_toggle_hotkey === null) {
+      payload.overlay_toggle_hotkey = null
+    } else {
+      if (typeof body.overlay_toggle_hotkey !== 'string') {
+        return toPythonError(400, '`overlay_toggle_hotkey` must be string or null', correlationId)
+      }
+      const hotkey = body.overlay_toggle_hotkey.trim()
+      if (!hotkey) return toPythonError(400, '`overlay_toggle_hotkey` cannot be empty', correlationId)
+      payload.overlay_toggle_hotkey = hotkey
     }
-    const hotkey = body.overlay_toggle_hotkey.trim()
-    if (!hotkey) return toPythonError(400, '`overlay_toggle_hotkey` cannot be empty', correlationId)
-    payload.overlay_toggle_hotkey = hotkey
   }
 
   if (typeof body.main_toggle_hotkey !== 'undefined') {
-    if (typeof body.main_toggle_hotkey !== 'string') return toPythonError(400, '`main_toggle_hotkey` must be string', correlationId)
-    const hotkey = body.main_toggle_hotkey.trim()
-    if (!hotkey) return toPythonError(400, '`main_toggle_hotkey` cannot be empty', correlationId)
-    payload.main_toggle_hotkey = hotkey
+    if (body.main_toggle_hotkey === null) {
+      payload.main_toggle_hotkey = null
+    } else {
+      if (typeof body.main_toggle_hotkey !== 'string') return toPythonError(400, '`main_toggle_hotkey` must be string or null', correlationId)
+      const hotkey = body.main_toggle_hotkey.trim()
+      if (!hotkey) return toPythonError(400, '`main_toggle_hotkey` cannot be empty', correlationId)
+      payload.main_toggle_hotkey = hotkey
+    }
   }
 
   if (typeof body.overlay_edit_hotkey !== 'undefined') {
-    if (typeof body.overlay_edit_hotkey !== 'string') return toPythonError(400, '`overlay_edit_hotkey` must be string', correlationId)
-    const hotkey = body.overlay_edit_hotkey.trim()
-    if (!hotkey) return toPythonError(400, '`overlay_edit_hotkey` cannot be empty', correlationId)
-    payload.overlay_edit_hotkey = hotkey
+    if (body.overlay_edit_hotkey === null) {
+      payload.overlay_edit_hotkey = null
+    } else {
+      if (typeof body.overlay_edit_hotkey !== 'string') return toPythonError(400, '`overlay_edit_hotkey` must be string or null', correlationId)
+      const hotkey = body.overlay_edit_hotkey.trim()
+      if (!hotkey) return toPythonError(400, '`overlay_edit_hotkey` cannot be empty', correlationId)
+      payload.overlay_edit_hotkey = hotkey
+    }
   }
 
   if (typeof body.app_toggle_hotkey !== 'undefined') {
-    if (typeof body.app_toggle_hotkey !== 'string') return toPythonError(400, '`app_toggle_hotkey` must be string', correlationId)
-    const hotkey = body.app_toggle_hotkey.trim()
-    if (!hotkey) return toPythonError(400, '`app_toggle_hotkey` cannot be empty', correlationId)
-    payload.app_toggle_hotkey = hotkey
+    if (body.app_toggle_hotkey === null) {
+      payload.app_toggle_hotkey = null
+    } else {
+      if (typeof body.app_toggle_hotkey !== 'string') return toPythonError(400, '`app_toggle_hotkey` must be string or null', correlationId)
+      const hotkey = body.app_toggle_hotkey.trim()
+      if (!hotkey) return toPythonError(400, '`app_toggle_hotkey` cannot be empty', correlationId)
+      payload.app_toggle_hotkey = hotkey
+    }
   }
 
   if (typeof body.app_enabled !== 'undefined') {
     if (typeof body.app_enabled !== 'boolean') return toPythonError(400, '`app_enabled` must be boolean', correlationId)
     payload.app_enabled = body.app_enabled
+  }
+
+  if (typeof body.block_alt_f4 !== 'undefined') {
+    if (typeof body.block_alt_f4 !== 'boolean') return toPythonError(400, '`block_alt_f4` must be boolean', correlationId)
+    payload.block_alt_f4 = body.block_alt_f4
   }
 
   if (typeof body.press_enter !== 'undefined') {
@@ -3386,6 +3799,515 @@ async function handlePythonConfigure(rawPayload) {
   }
 }
 
+function toLensSearchError(status, error, correlationId = '') {
+  return {
+    ok: false,
+    status,
+    error,
+    correlationId: sanitizeCorrelationId(correlationId),
+  }
+}
+
+function normalizeLensLanguage(value) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (normalized === 'en' || normalized === 'vi' || normalized === 'ko' || normalized === 'ja') return normalized
+  return 'vi'
+}
+
+function normalizeLensLimit(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return LENS_DEFAULT_LIMIT
+  const rounded = Math.round(value)
+  return Math.min(LENS_MAX_LIMIT, Math.max(1, rounded))
+}
+
+function parseDataUrlImage(input) {
+  const dataUrl = typeof input === 'string' ? input.trim() : ''
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/i.exec(dataUrl)
+  if (!match) return null
+  const mimeType = String(match[1] || '').toLowerCase()
+  const base64 = String(match[2] || '').trim()
+  if (!mimeType || !base64) return null
+
+  try {
+    const buffer = Buffer.from(base64, 'base64')
+    return { mimeType, buffer }
+  } catch {
+    return null
+  }
+}
+
+function buildLensUploadFilename(mimeType) {
+  if (mimeType.includes('png')) return 'image.png'
+  if (mimeType.includes('webp')) return 'image.webp'
+  if (mimeType.includes('gif')) return 'image.gif'
+  if (mimeType.includes('bmp')) return 'image.bmp'
+  return 'image.jpg'
+}
+
+async function buildGoogleSessionCookieHeader() {
+  const sessionCandidates = []
+  const defaultSession = session?.defaultSession
+  if (defaultSession?.cookies) sessionCandidates.push(defaultSession)
+  const googlePartitionSession = session?.fromPartition?.('persist:quicktext-google')
+  if (googlePartitionSession?.cookies && googlePartitionSession !== defaultSession) {
+    sessionCandidates.push(googlePartitionSession)
+  }
+  if (sessionCandidates.length === 0) return ''
+
+  const merged = new Map()
+  const urls = ['https://www.google.com', 'https://lens.google.com']
+
+  for (const browserSession of sessionCandidates) {
+    for (const url of urls) {
+      let cookies = []
+      try {
+        cookies = await browserSession.cookies.get({ url })
+      } catch {
+        cookies = []
+      }
+      for (const cookie of cookies) {
+        if (!cookie?.name || typeof cookie.value !== 'string') continue
+        merged.set(cookie.name, cookie.value)
+      }
+    }
+  }
+
+  return Array.from(merged.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join('; ')
+}
+
+async function uploadImageToGoogleLensWithSession(input) {
+  const cookieHeader = await buildGoogleSessionCookieHeader()
+  if (!cookieHeader) {
+    throw new Error('Google session not found in app profile. Please sign in Google inside this app session.')
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), LENS_SEARCH_TIMEOUT_MS)
+  const formData = new FormData()
+  formData.append('encoded_image', new Blob([input.imageBuffer], { type: input.mimeType }), buildLensUploadFilename(input.mimeType))
+  formData.append('processed_image_dimensions', '0,0')
+  formData.append('image_url', '')
+  formData.append('sbisrc', '')
+
+  const url =
+    `${GOOGLE_LENS_UPLOAD_BASE}?ep=gsbubb` +
+    `&st=${Date.now()}` +
+    `&authuser=0` +
+    `&hl=${encodeURIComponent(input.language)}` +
+    `&vpw=${input.viewportWidth}` +
+    `&vph=${input.viewportHeight}`
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      redirect: 'manual',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        cookie: cookieHeader,
+        origin: GOOGLE_ORIGIN,
+        referer: `${GOOGLE_ORIGIN}/`,
+        'accept-language': `${input.language}-${input.language.toUpperCase()},${input.language};q=0.9,en-US;q=0.8`,
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+      },
+    })
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`Google Lens blocked this session (${response.status})`)
+    }
+
+    const location = lensParserCore.resolveLensLocation(response.headers.get('location'), GOOGLE_ORIGIN)
+    if (location) return { lensUrl: location }
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`Google Lens redirect missing Location (${response.status})`)
+    }
+
+    const html = await response.text()
+    const htmlDerivedUrl = lensParserCore.extractLensSearchUrlFromHtml(html)
+    if (!htmlDerivedUrl) {
+      if (lensParserCore.detectLensChallenge(html)) {
+        throw new Error('Google Lens sign-in/challenge page detected. Please verify account in web preview.')
+      }
+      throw new Error(`Google Lens upload failed (${response.status})`)
+    }
+
+    return { lensUrl: htmlDerivedUrl, htmlFromUpload: html }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Google Lens upload timeout')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function fetchLensResultHtmlWithSession(lensUrl, language) {
+  const cookieHeader = await buildGoogleSessionCookieHeader()
+  if (!cookieHeader) {
+    throw new Error('Google session not found in app profile. Please sign in Google inside this app session.')
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), LENS_SEARCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(lensUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        cookie: cookieHeader,
+        referer: `${GOOGLE_ORIGIN}/`,
+        'accept-language': `${language}-${language.toUpperCase()},${language};q=0.9,en-US;q=0.8`,
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+      },
+    })
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`Google Lens blocked this session (${response.status})`)
+    }
+    if (!response.ok) {
+      throw new Error(`Google Lens result fetch failed (${response.status})`)
+    }
+    return await response.text()
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Google Lens result timeout')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+function normalizeLensDiagnostics(input) {
+  const source = input && typeof input === 'object' ? input : {}
+  const missingBlocks = Array.isArray(source.missingBlocks) ? source.missingBlocks.filter((item) => typeof item === 'string') : []
+  return {
+    hasLinks: !!source.hasLinks,
+    hasOcr: !!source.hasOcr,
+    hasOverview: !!source.hasOverview,
+    missingBlocks,
+  }
+}
+
+function normalizeLensParsedPayload(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {}
+  const results = Array.isArray(source.results)
+    ? source.results
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null
+          const title = typeof item.title === 'string' ? item.title.trim() : ''
+          const url = typeof item.url === 'string' ? item.url.trim() : ''
+          if (!title || !url) return null
+          return { title, url }
+        })
+        .filter(Boolean)
+    : []
+  const overviewBullets = Array.isArray(source.overviewBullets)
+    ? source.overviewBullets.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+    : []
+  const googleTranslationBullets = Array.isArray(source.googleTranslationBullets)
+    ? source.googleTranslationBullets.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+    : []
+  return {
+    results,
+    extractedText: typeof source.extractedText === 'string' ? source.extractedText.trim() : '',
+    aiReply: typeof source.aiReply === 'string' ? source.aiReply.trim() : '',
+    translatedReply: typeof source.translatedReply === 'string' ? source.translatedReply.trim() : '',
+    overviewTitle: typeof source.overviewTitle === 'string' ? source.overviewTitle.trim() : '',
+    overviewBullets,
+    googleTranslationBullets,
+    challengeDetected: !!source.challengeDetected,
+    diagnostics: normalizeLensDiagnostics(source.diagnostics),
+  }
+}
+
+function mergeLensResults(limit, primary, secondary) {
+  const cap = Math.max(1, Math.min(LENS_MAX_LIMIT, Number.isFinite(limit) ? Math.round(limit) : LENS_DEFAULT_LIMIT))
+  const merged = []
+  const seen = new Set()
+  const push = (item) => {
+    if (!item || typeof item !== 'object') return
+    const title = typeof item.title === 'string' ? item.title.trim() : ''
+    const url = typeof item.url === 'string' ? item.url.trim() : ''
+    if (!title || !url || seen.has(url) || merged.length >= cap) return
+    seen.add(url)
+    merged.push({ title, url })
+  }
+
+  for (const item of primary || []) push(item)
+  for (const item of secondary || []) push(item)
+  return merged
+}
+
+function mergeLensStringLists(primary, secondary) {
+  const merged = []
+  const seen = new Set()
+  const append = (value) => {
+    const normalized = typeof value === 'string' ? value.trim() : ''
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    merged.push(normalized)
+  }
+  for (const item of primary || []) append(item)
+  for (const item of secondary || []) append(item)
+  return merged
+}
+
+function mergeLensParsedPayload(limit, primaryPayload, secondaryPayload, language) {
+  const primary = normalizeLensParsedPayload(primaryPayload)
+  const secondary = normalizeLensParsedPayload(secondaryPayload)
+  const results = mergeLensResults(limit, primary.results, secondary.results)
+  const overviewBullets = mergeLensStringLists(primary.overviewBullets, secondary.overviewBullets)
+  const googleTranslationBullets = mergeLensStringLists(primary.googleTranslationBullets, secondary.googleTranslationBullets)
+  const translatedReply =
+    primary.translatedReply || secondary.translatedReply || (googleTranslationBullets.length > 0 ? googleTranslationBullets.join('\n') : '')
+  const extractedText = primary.extractedText || secondary.extractedText
+  const overviewTitle = primary.overviewTitle || secondary.overviewTitle
+  const hasLinks = results.length > 0
+  const hasOcr = !!extractedText
+  const hasOverview = !!overviewTitle || overviewBullets.length > 0
+  const missingBlocks = []
+  if (!hasLinks) missingBlocks.push('links')
+  if (!hasOcr) missingBlocks.push('ocr')
+  if (!hasOverview) missingBlocks.push('ai')
+  return {
+    results,
+    extractedText,
+    overviewTitle,
+    overviewBullets,
+    googleTranslationBullets,
+    translatedReply,
+    aiReply:
+      primary.aiReply ||
+      secondary.aiReply ||
+      lensParserCore.buildLensAiReply({
+        language,
+        extractedText,
+        overviewTitle,
+        overviewBullets,
+        results,
+      }),
+    challengeDetected: primary.challengeDetected || secondary.challengeDetected,
+    diagnostics: {
+      hasLinks,
+      hasOcr,
+      hasOverview,
+      missingBlocks,
+    },
+  }
+}
+
+async function loadLensResultInFallbackWindow(windowRef, lensUrl, language) {
+  await new Promise((resolve, reject) => {
+    let settled = false
+    const timeoutId = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('Lens fallback window load timeout'))
+    }, LENS_FALLBACK_SCRAPE_TIMEOUT_MS)
+
+    const clear = () => {
+      clearTimeout(timeoutId)
+      windowRef.webContents.removeListener('did-finish-load', handleDone)
+      windowRef.webContents.removeListener('did-fail-load', handleFail)
+    }
+
+    const handleDone = () => {
+      if (settled) return
+      settled = true
+      clear()
+      resolve()
+    }
+
+    const handleFail = (_event, code, description, validatedUrl, isMainFrame) => {
+      if (!isMainFrame || settled) return
+      settled = true
+      clear()
+      reject(new Error(`Lens fallback failed (${code}): ${description || validatedUrl || 'unknown'}`))
+    }
+
+    windowRef.webContents.once('did-finish-load', handleDone)
+    windowRef.webContents.on('did-fail-load', handleFail)
+    void windowRef.loadURL(lensUrl, {
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+      extraHeaders: `accept-language: ${language}-${language.toUpperCase()},${language};q=0.9,en-US;q=0.8\n`,
+    })
+  })
+}
+
+async function scrapeLensResultViaWebviewFallback(lensUrl, language, limit) {
+  let fallbackWindow = null
+  const startedAt = Date.now()
+  let bestParsed = null
+  try {
+    fallbackWindow = new BrowserWindow({
+      show: false,
+      frame: false,
+      transparent: true,
+      focusable: false,
+      skipTaskbar: true,
+      width: 1000,
+      height: 800,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        partition: 'persist:quicktext-google',
+      },
+    })
+
+    await loadLensResultInFallbackWindow(fallbackWindow, lensUrl, language)
+
+    while (Date.now() - startedAt < LENS_FALLBACK_SCRAPE_TIMEOUT_MS) {
+      const html = await fallbackWindow.webContents.executeJavaScript(
+        'document.documentElement ? document.documentElement.outerHTML : ""',
+        true,
+      )
+      const parsed = normalizeLensParsedPayload(
+        lensParserCore.parseLensHtmlStructured(html, {
+          language,
+          limit,
+          googleOrigin: GOOGLE_ORIGIN,
+        }),
+      )
+      bestParsed = parsed
+      const shouldFallback = lensParserCore.shouldTriggerLensFallback(parsed)
+      if (!shouldFallback || parsed.challengeDetected) break
+      await sleep(LENS_FALLBACK_SCRAPE_POLL_MS)
+    }
+
+    return {
+      parsed: bestParsed || normalizeLensParsedPayload({}),
+      durationMs: Date.now() - startedAt,
+    }
+  } finally {
+    if (fallbackWindow && !fallbackWindow.isDestroyed()) {
+      fallbackWindow.destroy()
+    }
+  }
+}
+
+async function handleLensSearchImage(rawPayload) {
+  const correlationId = nextCorrelationId('lens-search')
+  if (!isObjectPayload(rawPayload)) {
+    return toLensSearchError(400, 'Payload must be a JSON object', correlationId)
+  }
+
+  const imageDataUrl = typeof rawPayload.imageDataUrl === 'string' ? rawPayload.imageDataUrl.trim() : ''
+  if (!imageDataUrl) return toLensSearchError(400, '`imageDataUrl` is required', correlationId)
+
+  const image = parseDataUrlImage(imageDataUrl)
+  if (!image) return toLensSearchError(400, 'Invalid image data URL', correlationId)
+  if (image.buffer.length <= 0) return toLensSearchError(400, 'Image payload is empty', correlationId)
+  if (image.buffer.length > LENS_MAX_IMAGE_BYTES) {
+    return toLensSearchError(400, `Image too large (max ${LENS_MAX_IMAGE_BYTES} bytes)`, correlationId)
+  }
+
+  const language = normalizeLensLanguage(rawPayload.hl)
+  const viewportWidth = clampInt(rawPayload.vpw, 320, 8192, 1209)
+  const viewportHeight = clampInt(rawPayload.vph, 240, 8192, 1229)
+  const limit = normalizeLensLimit(rawPayload.limit)
+
+  try {
+    const upload = await uploadImageToGoogleLensWithSession({
+      imageBuffer: image.buffer,
+      mimeType: image.mimeType,
+      language,
+      viewportWidth,
+      viewportHeight,
+    })
+
+    const html = upload.htmlFromUpload || (await fetchLensResultHtmlWithSession(upload.lensUrl, language))
+    const parsedHttp = normalizeLensParsedPayload(
+      lensParserCore.parseLensHtmlStructured(html, {
+        language,
+        limit,
+        googleOrigin: GOOGLE_ORIGIN,
+      }),
+    )
+    const fallbackReasons = []
+    if (parsedHttp.challengeDetected) fallbackReasons.push('challenge')
+    if (lensParserCore.shouldTriggerLensFallback(parsedHttp)) fallbackReasons.push('missing-blocks')
+
+    let merged = parsedHttp
+    let parserSource = 'http'
+    let fallbackUsed = false
+    let fallbackDiagnostics = null
+
+    if (fallbackReasons.length > 0) {
+      fallbackUsed = true
+      try {
+        const fallback = await scrapeLensResultViaWebviewFallback(upload.lensUrl, language, limit)
+        const parsedFallback = normalizeLensParsedPayload(fallback.parsed)
+        const primaryHasAny =
+          parsedHttp.results.length > 0 ||
+          !!parsedHttp.extractedText ||
+          !!parsedHttp.overviewTitle ||
+          parsedHttp.overviewBullets.length > 0
+        const fallbackHasAny =
+          parsedFallback.results.length > 0 ||
+          !!parsedFallback.extractedText ||
+          !!parsedFallback.overviewTitle ||
+          parsedFallback.overviewBullets.length > 0
+
+        if (fallbackHasAny && !primaryHasAny) parserSource = 'webview'
+        else if (fallbackHasAny && primaryHasAny) parserSource = 'merged'
+
+        merged = mergeLensParsedPayload(limit, parsedHttp, parsedFallback, language)
+        fallbackDiagnostics = {
+          durationMs: fallback.durationMs,
+          diagnostics: parsedFallback.diagnostics,
+          challengeDetected: parsedFallback.challengeDetected,
+        }
+      } catch (fallbackError) {
+        fallbackDiagnostics = {
+          error: fallbackError instanceof Error ? fallbackError.message : 'Lens fallback scrape failed',
+        }
+      }
+    }
+
+    if (!merged.results.length && !merged.extractedText && !merged.aiReply && !merged.overviewTitle && !merged.overviewBullets.length) {
+      return toLensSearchError(502, 'Google Lens returned no parseable result', correlationId)
+    }
+
+    return {
+      ok: true,
+      lensUrl: upload.lensUrl,
+      results: merged.results,
+      extractedText: merged.extractedText || '',
+      aiReply: merged.aiReply || '',
+      translatedReply: merged.translatedReply || '',
+      overviewTitle: merged.overviewTitle || '',
+      overviewBullets: merged.overviewBullets,
+      googleTranslationBullets: merged.googleTranslationBullets,
+      parserSource,
+      fallbackUsed,
+      diagnostics: {
+        fallbackReasons,
+        http: parsedHttp.diagnostics,
+        fallback: fallbackDiagnostics,
+        merged: merged.diagnostics,
+      },
+      correlationId,
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message.trim() ? error.message.trim() : 'Google Lens search failed'
+    return toLensSearchError(502, message, correlationId)
+  }
+}
+
 function getSelectedTextFromSettings(settings) {
   if (!settings || !Array.isArray(settings.items) || settings.items.length === 0) return ''
   const rawIndex = Number(settings.selectedIndex)
@@ -3395,30 +4317,35 @@ function getSelectedTextFromSettings(settings) {
   return typeof selected.text === 'string' ? selected.text : ''
 }
 
-async function syncPythonServiceForSettings(settings, reason = 'settings-sync') {
+async function syncInputRuntimeForSettings(settings, reason = 'settings-sync') {
   if (!settings || typeof settings !== 'object') return
 
-  managedPythonRetryAfter = 0
-  const ready = await ensurePythonServiceAvailable()
-  if (!ready) {
-    safeConsoleError(`[python-sync:${reason}] service unavailable`)
-    return
+  const backend = resolveInputBackendForRuntime()
+  if (backend === INPUT_BACKEND_PYTHON) {
+    managedPythonRetryAfter = 0
+    const ready = await ensurePythonServiceAvailable()
+    if (!ready) {
+      safeConsoleError(`[input-sync:${reason}] python backend unavailable`)
+      return
+    }
   }
 
   const payload = {
     text: getSelectedTextFromSettings(settings),
     hotkey: settings.sendHotkey,
-    app_toggle_hotkey: settings.appToggleHotkey,
+    // App toggle hotkey is handled directly in Electron main process for reliability.
+    app_toggle_hotkey: null,
+    block_alt_f4: !!settings.blockAltF4WhenEnabled,
     app_enabled: !!settings.appEnabled,
     overlay_toggle_hotkey: settings.overlayToggleHotkey,
     main_toggle_hotkey: settings.mainToggleHotkey,
     overlay_edit_hotkey: settings.overlayEditHotkey,
     press_enter: false,
   }
-  const result = await handlePythonConfigure(payload)
+  const result = await handleInputConfigure(payload)
   if (!result || result.ok !== true) {
     const errorMessage = typeof result?.error === 'string' ? result.error : 'unknown configure error'
-    safeConsoleError(`[python-sync:${reason}] configure failed: ${errorMessage}`)
+    safeConsoleError(`[input-sync:${reason}] configure failed: ${errorMessage}`)
   }
 }
 
@@ -3430,6 +4357,187 @@ function parseInputAfter(rawAfter) {
       ? afterCandidate
       : Number.parseInt(String(afterCandidate ?? ''), 10)
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
+function resolveInputBackendForRuntime() {
+  return ensureInputBackendReady()
+}
+
+async function handleNativeSend(rawPayload) {
+  const correlationId = nextCorrelationId('native-send')
+  if (!isObjectPayload(rawPayload)) {
+    return toInputBridgeError(400, 'Payload must be a JSON object', correlationId)
+  }
+
+  const body = rawPayload
+  const text = typeof body.text === 'string' ? body.text : ''
+  if (!text.trim()) {
+    return toInputBridgeError(400, '`text` is required', correlationId)
+  }
+
+  let delayRange
+  if (typeof body.delay_range !== 'undefined') {
+    try {
+      delayRange = parsePythonDelayRange(body.delay_range)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid `delay_range`'
+      return toInputBridgeError(400, message, correlationId)
+    }
+  }
+
+  let pressEnter = false
+  if (typeof body.press_enter !== 'undefined') {
+    if (typeof body.press_enter !== 'boolean') {
+      return toInputBridgeError(400, '`press_enter` must be boolean', correlationId)
+    }
+    pressEnter = body.press_enter
+  }
+
+  try {
+    ensureInputBackendReady()
+    const core = tryLoadNativeInputCore()
+    const payload = { text, press_enter: pressEnter }
+    if (delayRange) payload.delay_range = delayRange
+    core.send(payload)
+    return { ok: true, correlationId }
+  } catch (error) {
+    return toInputBridgeError(503, error instanceof Error ? error.message : 'Native input send failed', correlationId)
+  }
+}
+
+async function handleNativeConfigure(rawPayload) {
+  const correlationId = nextCorrelationId('native-config')
+  if (!isObjectPayload(rawPayload)) {
+    return toInputBridgeError(400, 'Payload must be a JSON object', correlationId)
+  }
+
+  const body = rawPayload
+  const payload = {}
+
+  if (typeof body.text !== 'undefined') {
+    if (typeof body.text !== 'string') return toInputBridgeError(400, '`text` must be string', correlationId)
+    payload.text = body.text
+  }
+
+  const parseNullableHotkey = (fieldName) => {
+    if (!Object.prototype.hasOwnProperty.call(body, fieldName)) return undefined
+    const value = body[fieldName]
+    if (value === null) return null
+    if (typeof value !== 'string') {
+      throw new Error(`\`${fieldName}\` must be string or null`)
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      throw new Error(`\`${fieldName}\` cannot be empty`)
+    }
+    return trimmed
+  }
+
+  try {
+    const sendHotkey = parseNullableHotkey('hotkey')
+    if (typeof sendHotkey !== 'undefined') payload.hotkey = sendHotkey
+    const appToggle = parseNullableHotkey('app_toggle_hotkey')
+    if (typeof appToggle !== 'undefined') payload.app_toggle_hotkey = appToggle
+    const overlayToggle = parseNullableHotkey('overlay_toggle_hotkey')
+    if (typeof overlayToggle !== 'undefined') payload.overlay_toggle_hotkey = overlayToggle
+    const mainToggle = parseNullableHotkey('main_toggle_hotkey')
+    if (typeof mainToggle !== 'undefined') payload.main_toggle_hotkey = mainToggle
+    const overlayEdit = parseNullableHotkey('overlay_edit_hotkey')
+    if (typeof overlayEdit !== 'undefined') payload.overlay_edit_hotkey = overlayEdit
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid hotkey payload'
+    return toInputBridgeError(400, message, correlationId)
+  }
+
+  if (typeof body.app_enabled !== 'undefined') {
+    if (typeof body.app_enabled !== 'boolean') return toInputBridgeError(400, '`app_enabled` must be boolean', correlationId)
+    payload.app_enabled = body.app_enabled
+  }
+
+  if (typeof body.block_alt_f4 !== 'undefined') {
+    if (typeof body.block_alt_f4 !== 'boolean') return toInputBridgeError(400, '`block_alt_f4` must be boolean', correlationId)
+    payload.block_alt_f4 = body.block_alt_f4
+  }
+
+  if (typeof body.press_enter !== 'undefined') {
+    if (typeof body.press_enter !== 'boolean') return toInputBridgeError(400, '`press_enter` must be boolean', correlationId)
+    payload.press_enter = body.press_enter
+  }
+
+  if (typeof body.delay_range !== 'undefined') {
+    try {
+      payload.delay_range = parsePythonDelayRange(body.delay_range)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid `delay_range`'
+      return toInputBridgeError(400, message, correlationId)
+    }
+  }
+
+  if (Object.keys(payload).length === 0) {
+    return { ok: true, skipped: true, correlationId }
+  }
+
+  try {
+    ensureInputBackendReady()
+    const core = tryLoadNativeInputCore()
+    const config = core.configure(payload)
+    return { ok: true, config, correlationId }
+  } catch (error) {
+    return toInputBridgeError(503, error instanceof Error ? error.message : 'Native input configure failed', correlationId)
+  }
+}
+
+async function handleNativeEvents(rawAfter) {
+  const correlationId = nextCorrelationId('native-events')
+  const after = parseInputAfter(rawAfter)
+  if (after === null) {
+    return { ok: false, error: '`after` must be a non-negative integer', correlationId }
+  }
+
+  try {
+    ensureInputBackendReady()
+    const core = tryLoadNativeInputCore()
+    const result = core.events(after)
+    const events = Array.isArray(result?.events) ? result.events : []
+    const lastId =
+      typeof result?.last_id === 'number' && Number.isInteger(result.last_id) ? result.last_id : after
+    return {
+      ok: true,
+      events,
+      last_id: lastId,
+      correlationId,
+    }
+  } catch (error) {
+    return {
+      ok: true,
+      events: [],
+      last_id: after,
+      degraded: true,
+      error: error instanceof Error ? error.message : 'Native input events unavailable',
+      correlationId,
+    }
+  }
+}
+
+async function handleInputSend(rawPayload) {
+  if (resolveInputBackendForRuntime() === INPUT_BACKEND_NATIVE) {
+    return handleNativeSend(rawPayload)
+  }
+  return handlePythonSend(rawPayload)
+}
+
+async function handleInputConfigure(rawPayload) {
+  if (resolveInputBackendForRuntime() === INPUT_BACKEND_NATIVE) {
+    return handleNativeConfigure(rawPayload)
+  }
+  return handlePythonConfigure(rawPayload)
+}
+
+async function handleInputEvents(rawAfter) {
+  if (resolveInputBackendForRuntime() === INPUT_BACKEND_NATIVE) {
+    return handleNativeEvents(rawAfter)
+  }
+  return handlePythonEvents(rawAfter)
 }
 
 async function handlePythonEvents(rawAfter) {
@@ -3670,6 +4778,17 @@ function unregisterScreenListeners() {
 function attachWindowHealthHandlers(windowRef, windowName) {
   if (!windowRef || windowRef.isDestroyed()) return
 
+  windowRef.webContents.setWindowOpenHandler((details) => {
+    safeConsoleError(`[window:${windowName}] blocked window.open: ${details?.url || 'unknown'}`)
+    return { action: 'deny' }
+  })
+
+  windowRef.webContents.on('will-navigate', (event, url) => {
+    if (isTrustedRendererUrl(url)) return
+    event.preventDefault()
+    safeConsoleError(`[window:${windowName}] blocked navigation: ${url || 'unknown'}`)
+  })
+
   let recoverTimer = null
   let recovering = false
   const scheduleRecover = (reason) => {
@@ -3702,6 +4821,17 @@ function attachWindowHealthHandlers(windowRef, windowName) {
   windowRef.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame) return
     scheduleRecover(`did-fail-load:${errorCode}:${errorDescription}:${validatedURL || ''}`)
+  })
+
+  // Surface renderer-side exceptions to terminal so we can diagnose client crashes quickly.
+  windowRef.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (typeof message !== 'string' || message.length === 0) return
+    if (level < 3 && !/error|exception|failed|unhandled/i.test(message)) return
+    safeConsoleError(`[window:${windowName}] renderer console(level=${level}) ${sourceId || '<unknown>'}:${line || 0} ${message}`)
+  })
+
+  windowRef.webContents.on('preload-error', (_event, preloadPath, error) => {
+    safeConsoleError(`[window:${windowName}] preload error (${preloadPath || 'unknown'}):`, error)
   })
 
   windowRef.on('closed', () => {
@@ -3835,6 +4965,7 @@ function createOverlayWindow() {
       preload: path.join(__dirname, 'preload-overlay.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   })
 
@@ -3861,16 +4992,22 @@ function createOverlayWindow() {
 
   overlayWindow.on('show', () => {
     logOverlayLifecycle('show')
+    syncOverlaySmartZoneMonitor()
   })
 
   overlayWindow.on('hide', () => {
     logOverlayLifecycle('hide')
+    syncOverlaySmartZoneMonitor()
   })
 
   overlayWindow.on('closed', () => {
     overlayLifecycleStats.closeCount += 1
     logOverlayLifecycle('closed')
     overlayBoundsSignature = ''
+    clearOverlaySmartZoneMonitor()
+    overlayInteractiveZones = {
+      quickAdd: null,
+    }
     overlayWindow = null
   })
 
@@ -3991,6 +5128,7 @@ function createSettingsWindow(options = {}) {
     backgroundColor: '#00000000',
     hasShadow: true,
     show: false,
+    skipTaskbar: true,
     icon: resolveAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -4075,6 +5213,7 @@ function applyMainWindowSettings(settings) {
 function applySettingsWindowSettings(_settings) {
   if (!hotkeyWindow || hotkeyWindow.isDestroyed()) return
   hotkeyWindow.setBackgroundColor('#00000000')
+  hotkeyWindow.setSkipTaskbar(true)
   if (hotkeyWindow.isVisible()) {
     scheduleSettingsWindowSync()
   }
@@ -4110,6 +5249,7 @@ function applyOverlayVisibility(visible) {
   } else if (overlayWindow.isVisible()) {
     overlayWindow.hide()
   }
+  syncOverlaySmartZoneMonitor()
 }
 
 function maybeTearDownOverlayWindow(settings) {
@@ -4130,35 +5270,163 @@ function applySettingsToWindows(settings) {
 function applyOverlayInteraction(interactive) {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
 
-  const settings = ensureSettings()
   const isInteractive = !!interactive
-  const smartClickThrough = !!settings.overlaySmartClickThrough
 
   if (isInteractive) {
     overlayMousePassThrough = false
-  } else if (!smartClickThrough) {
-    overlayMousePassThrough = true
   }
 
-  const passThrough = isInteractive ? false : smartClickThrough ? overlayMousePassThrough : true
+  const passThrough = isInteractive ? false : !!overlayMousePassThrough
   overlayWindow.setIgnoreMouseEvents(passThrough, { forward: passThrough })
-  if (typeof overlayWindow.setFocusable === 'function') {
-    overlayWindow.setFocusable(false)
+  if (typeof overlayWindow.setSkipTaskbar === 'function') {
+    overlayWindow.setSkipTaskbar(true)
   }
+  const canTakeFocus = isInteractive || !passThrough
+  if (typeof overlayWindow.setFocusable === 'function') {
+    overlayWindow.setFocusable(canTakeFocus)
+  }
+  if (isInteractive) {
+    try {
+      if (!overlayWindow.isFocused()) {
+        overlayWindow.focus()
+      }
+      overlayWindow.webContents.focus()
+    } catch {
+      // Ignore focus handoff errors to keep overlay runtime stable.
+    }
+  } else if (passThrough) {
+    try {
+      overlayWindow.blur()
+    } catch {
+      // Ignore blur failures on some Windows focus contexts.
+    }
+  }
+  syncOverlaySmartZoneMonitor()
 }
 
 function setOverlayMousePassThrough(passThrough) {
   const settings = ensureSettings()
   if (settings.overlayInteractive) {
+    overlayMousePassThrough = false
+    applyOverlayInteraction(settings.overlayInteractive)
     return false
   }
-  if (!settings.overlaySmartClickThrough) {
-    return true
-  }
 
-  overlayMousePassThrough = !!passThrough
+  const nextPassThrough = !!passThrough
+  if (overlayMousePassThrough === nextPassThrough) {
+    return overlayMousePassThrough
+  }
+  overlayMousePassThrough = nextPassThrough
   applyOverlayInteraction(settings.overlayInteractive)
   return overlayMousePassThrough
+}
+
+function clearOverlaySmartZoneMonitor() {
+  if (!overlaySmartZonePollTimer) return
+  clearInterval(overlaySmartZonePollTimer)
+  overlaySmartZonePollTimer = null
+  overlaySmartZoneInsideLast = false
+}
+
+function normalizeOverlayInteractiveZones(input) {
+  const source = input && typeof input === 'object' ? input : {}
+  const normalizeRect = (value) => {
+    if (!value || typeof value !== 'object') return null
+    const x = Number(value.x)
+    const y = Number(value.y)
+    const width = Number(value.width)
+    const height = Number(value.height)
+    const enabled = value.enabled !== false
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null
+    if (!enabled || width <= 2 || height <= 2) return null
+    return {
+      x,
+      y,
+      width,
+      height,
+    }
+  }
+
+  return {
+    quickAdd: normalizeRect(source.quickAdd),
+  }
+}
+
+function getQuickAddFallbackZone(settings) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return null
+  const bounds = overlayWindow.getBounds()
+  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) return null
+
+  const width = Math.round(
+    Math.min(OVERLAY_QUICK_ADD_MAX_WIDTH, Math.max(OVERLAY_QUICK_ADD_MIN_WIDTH, bounds.width - OVERLAY_QUICK_ADD_GUTTER * 2)),
+  )
+  const maxX = Math.max(OVERLAY_QUICK_ADD_GUTTER, bounds.width - width - OVERLAY_QUICK_ADD_GUTTER)
+  const maxY = Math.max(OVERLAY_QUICK_ADD_GUTTER, bounds.height - OVERLAY_QUICK_ADD_HEIGHT - OVERLAY_QUICK_ADD_GUTTER)
+  const rawX = Number.isFinite(settings?.overlayQuickAddX) ? settings.overlayQuickAddX : 40
+  const rawY = Number.isFinite(settings?.overlayQuickAddY) ? settings.overlayQuickAddY : 86
+  const x = Math.round(Math.min(maxX, Math.max(OVERLAY_QUICK_ADD_GUTTER, rawX)))
+  const y = Math.round(Math.min(maxY, Math.max(OVERLAY_QUICK_ADD_GUTTER, rawY)))
+  return {
+    x,
+    y,
+    width,
+    height: OVERLAY_QUICK_ADD_HEIGHT,
+  }
+}
+
+function isCursorInsideOverlayInteractiveZones() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return false
+  if (!overlayWindow.isVisible()) return false
+  const settings = ensureSettings()
+  const quickAdd = overlayInteractiveZones.quickAdd || getQuickAddFallbackZone(settings)
+  if (!quickAdd) return false
+
+  const cursor = screen.getCursorScreenPoint()
+  const overlayBounds = overlayWindow.getBounds()
+  const localX = cursor.x - overlayBounds.x
+  const localY = cursor.y - overlayBounds.y
+
+  return (
+    localX >= quickAdd.x &&
+    localX <= quickAdd.x + quickAdd.width &&
+    localY >= quickAdd.y &&
+    localY <= quickAdd.y + quickAdd.height
+  )
+}
+
+function evaluateOverlaySmartZonePassThrough() {
+  const settings = ensureSettings()
+  if (!settings.overlaySmartClickThrough && !overlayInteractiveZones.quickAdd) return
+  if (settings.overlayInteractive) return
+  if (!settings.appEnabled || !settings.overlayVisible) return
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return
+
+  const inside = isCursorInsideOverlayInteractiveZones()
+  if (inside === overlaySmartZoneInsideLast) return
+  overlaySmartZoneInsideLast = inside
+  setOverlayMousePassThrough(!inside)
+}
+
+function syncOverlaySmartZoneMonitor() {
+  clearOverlaySmartZoneMonitor()
+  const settings = ensureSettings()
+  if (settings.overlayInteractive) return
+  if (!settings.appEnabled || !settings.overlayVisible) return
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return
+  if (!settings.overlaySmartClickThrough && !overlayInteractiveZones.quickAdd) return
+
+  evaluateOverlaySmartZonePassThrough()
+  overlaySmartZonePollTimer = setInterval(() => {
+    evaluateOverlaySmartZonePassThrough()
+  }, 80)
+}
+
+function setOverlayInteractiveZones(payload) {
+  overlayInteractiveZones = normalizeOverlayInteractiveZones(payload)
+  overlaySmartZoneInsideLast = false
+  syncOverlaySmartZoneMonitor()
+  evaluateOverlaySmartZonePassThrough()
+  return true
 }
 
 function schedulePersistMainBounds() {
@@ -4207,6 +5475,75 @@ function unregisterElectronHotkeys() {
   electronHotkeyLastTriggeredAt.clear()
 }
 
+function unregisterStandaloneAppToggleHotkey() {
+  if (!standaloneAppToggleHotkeyRegistration) return
+  try {
+    globalShortcut.unregister(standaloneAppToggleHotkeyRegistration)
+  } catch {
+    // Ignore shortcut teardown errors while exiting/re-registering.
+  }
+  standaloneAppToggleHotkeyRegistration = ''
+}
+
+function unregisterAltF4BlockShortcut() {
+  if (!altF4BlockShortcutRegistered) return
+  try {
+    globalShortcut.unregister('Alt+F4')
+  } catch {
+    // Ignore teardown errors while exiting/re-registering.
+  }
+  altF4BlockShortcutRegistered = false
+}
+
+function syncAltF4BlockShortcut(settings) {
+  const shouldBlock = !!settings?.appEnabled && !!settings?.blockAltF4WhenEnabled
+  if (!shouldBlock) {
+    unregisterAltF4BlockShortcut()
+    return
+  }
+
+  if (altF4BlockShortcutRegistered) return
+
+  try {
+    const ok = globalShortcut.register('Alt+F4', () => {})
+    if (ok) {
+      altF4BlockShortcutRegistered = true
+      return
+    }
+    safeConsoleError('[hotkey:alt-f4] register failed')
+  } catch (error) {
+    safeConsoleError('[hotkey:alt-f4] register error', error)
+  }
+}
+
+function syncStandaloneAppToggleHotkey(settings) {
+  if (shouldUseElectronHotkeyFallback()) {
+    unregisterStandaloneAppToggleHotkey()
+    return
+  }
+
+  const combo = typeof settings?.appToggleHotkey === 'string' ? settings.appToggleHotkey.trim() : ''
+  if (!combo) {
+    unregisterStandaloneAppToggleHotkey()
+    return
+  }
+  if (combo === standaloneAppToggleHotkeyRegistration) return
+
+  unregisterStandaloneAppToggleHotkey()
+  try {
+    const ok = globalShortcut.register(combo, () => {
+      handleElectronHotkeyAction('app.toggle_enabled')
+    })
+    if (ok) {
+      standaloneAppToggleHotkeyRegistration = combo
+      return
+    }
+    safeConsoleError(`[hotkey:app-toggle] register failed: ${combo}`)
+  } catch (error) {
+    safeConsoleError(`[hotkey:app-toggle] invalid shortcut: ${combo}`, error)
+  }
+}
+
 function shouldSuppressElectronHotkeyAction(actionId) {
   const now = Date.now()
   const key = String(actionId || '').trim() || 'unknown'
@@ -4249,7 +5586,7 @@ function applyAppToggleHotkeyAction() {
     maybeTearDownOverlayWindow(settings)
   }
   ensureHotkeys(settings)
-  void syncPythonServiceForSettings(settings, 'app-toggle-hotkey')
+  void syncInputRuntimeForSettings(settings, 'app-toggle-hotkey')
   broadcastSettings()
   refreshTrayMenu()
 }
@@ -4283,6 +5620,19 @@ function handleElectronHotkeyAction(actionId) {
     }
     if (actionId === 'text.send_current') {
       triggerSendHotkeyAction()
+    }
+    if (actionId === 'overlay.paste_image') {
+      try {
+        const image = clipboard.readImage()
+        if (image && !image.isEmpty()) {
+          const dataUrl = image.toDataURL()
+          if (overlayWindow && !overlayWindow.isDestroyed()) {
+            overlayWindow.webContents.send('paste-image', dataUrl)
+          }
+        }
+      } catch (error) {
+        safeConsoleError('[hotkey:paste-image] failed:', error)
+      }
     }
   } catch (error) {
     safeConsoleError('[hotkey:fallback] action failed:', actionId, error)
@@ -4324,14 +5674,27 @@ function syncElectronHotkeys(settings) {
           ['text.send_current', settings.sendHotkey],
         ]
 
+  // Add paste image hotkey if overlay is visible and image tool is enabled
+  if (settings.appEnabled && settings.overlayVisible && settings.overlayToolsShowImageTranslate) {
+    registrationPlan.push(['overlay.paste_image', 'Ctrl+V'])
+  }
+
   for (const [actionId, combo] of registrationPlan) {
     registerElectronHotkey(combo, actionId)
   }
 }
 
+function hotkeySignatureValue(value) {
+  if (value === null) return 'none'
+  if (typeof value !== 'string') return ''
+  return value
+}
+
 function ensureHotkeys(settings) {
+  syncAltF4BlockShortcut(settings)
+  syncStandaloneAppToggleHotkey(settings)
   const fallbackState = shouldUseElectronHotkeyFallback() ? '1' : '0'
-  const nextSignature = `${fallbackState}|${settings.appEnabled ? '1' : '0'}|${settings.appToggleHotkey}|${settings.overlayToggleHotkey}|${settings.mainToggleHotkey}|${settings.overlayEditHotkey}|${settings.sendHotkey}`
+  const nextSignature = `${fallbackState}|${settings.appEnabled ? '1' : '0'}|${hotkeySignatureValue(settings.appToggleHotkey)}|${hotkeySignatureValue(settings.overlayToggleHotkey)}|${hotkeySignatureValue(settings.mainToggleHotkey)}|${hotkeySignatureValue(settings.overlayEditHotkey)}|${hotkeySignatureValue(settings.sendHotkey)}`
   if (nextSignature === hotkeySignature) {
     if (electronHotkeyRegistrations.length === 0 && shouldUseElectronHotkeyFallback()) {
       syncElectronHotkeys(settings)
@@ -4364,6 +5727,8 @@ function toggleOverlayInteraction() {
   settings.overlayInteractive = !settings.overlayInteractive
   if (settings.overlayInteractive) {
     ensureOverlayWindowForCurrentSettings()
+    settings.overlayToolsPanelVisible = true
+    settings.overlayToolsActiveTab = 'image'
   }
   if (!settings.overlayInteractive) {
     overlayMousePassThrough = true
@@ -4379,12 +5744,14 @@ function toggleOverlayInteraction() {
 
 function hideMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  hideTrayMenuWindow()
   mainWindow.hide()
   refreshTrayMenu()
 }
 
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  hideTrayMenuWindow()
   if (mainWindow.isMinimized()) mainWindow.restore()
   if (!mainWindow.isVisible()) mainWindow.show()
   mainWindow.focus()
@@ -4400,8 +5767,43 @@ function toggleMainWindowVisibility() {
   }
 }
 
+function setWindowMode(mode) {
+  const targetMode = mode === 'overlay' ? 'overlay' : 'manager'
+  const settings = ensureSettings()
+
+  if (targetMode === 'overlay') {
+    settings.appEnabled = true
+    settings.overlayVisible = true
+    ensureOverlayWindowForCurrentSettings()
+    applyOverlayWindowSettings(settings)
+    applyOverlayVisibility(true)
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.hide()
+    }
+  } else {
+    settings.overlayVisible = false
+    clearOverlayBootTimer()
+    applyOverlayWindowSettings(settings)
+    applyOverlayVisibility(false)
+    maybeTearDownOverlayWindow(settings)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+  }
+
+  void saveSettings(settings)
+  ensureHotkeys(settings)
+  void syncInputRuntimeForSettings(settings, 'window-mode')
+  broadcastSettings()
+  refreshTrayMenu()
+  return settings
+}
+
 function showSettingsWindow(options = {}) {
   const focusWindow = options.focus !== false
+  hideTrayMenuWindow()
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     if (!mainWindow.isVisible()) mainWindow.show()
@@ -4425,6 +5827,7 @@ function showSettingsWindow(options = {}) {
 
 function hideSettingsWindow(options = {}) {
   const refocusMain = options.refocusMain !== false
+  hideTrayMenuWindow()
   if (!hotkeyWindow || hotkeyWindow.isDestroyed()) return
   clearSettingsWindowSyncTimer()
   if (hotkeyWindow.isVisible()) {
@@ -4441,6 +5844,7 @@ function hideSettingsWindow(options = {}) {
 
 function closeSettingsWindow(options = {}) {
   const refocusMain = options.refocusMain !== false
+  hideTrayMenuWindow()
   settingsWindowRestorePending = false
   suppressSettingsBlurClose = false
   if (!hotkeyWindow || hotkeyWindow.isDestroyed()) return
@@ -4474,15 +5878,115 @@ function synchronizeSettingsWindowWithMain() {
 }
 
 function showOverlaySettingsWindow() {
-  showHotkeyWindow()
+  showOverlayImageWindow({ tab: 'settings' })
 }
 
 function closeOverlaySettingsWindow() {
-  closeHotkeyWindow()
+  closeOverlayImageWindow()
+}
+
+function normalizeOverlayToolsTab(tab) {
+  if (tab === 'settings') return 'settings'
+  return tab === 'text' || tab === 'texts' ? 'text' : 'image'
+}
+
+function buildOverlayToolsUrl(tab) {
+  const normalizedTab = normalizeOverlayToolsTab(tab)
+  return buildRendererUrl(`/overlay-image?tab=${normalizedTab}`)
+}
+
+function getOverlayImageWindowBounds() {
+  const referencePoint =
+    mainWindow && !mainWindow.isDestroyed()
+      ? {
+          x: Math.round(mainWindow.getBounds().x + mainWindow.getBounds().width / 2),
+          y: Math.round(mainWindow.getBounds().y + mainWindow.getBounds().height / 2),
+        }
+      : screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(referencePoint)
+  const workArea = display?.workArea || { x: 0, y: 0, width: 1280, height: 720 }
+  const width = Math.min(OVERLAY_IMAGE_WINDOW_WIDTH, Math.max(560, workArea.width - 16))
+  const height = Math.min(OVERLAY_IMAGE_WINDOW_HEIGHT, Math.max(620, workArea.height - 16))
+  const x = Math.round(workArea.x + (workArea.width - width) / 2)
+  const y = Math.round(workArea.y + (workArea.height - height) / 2)
+  return { x, y, width, height }
+}
+
+function createOverlayImageWindow() {
+  if (overlayImageWindow && !overlayImageWindow.isDestroyed()) return overlayImageWindow
+
+  const bounds = getOverlayImageWindowBounds()
+  overlayImageWindow = new BrowserWindow({
+    title: `${APP_DISPLAY_NAME} Overlay Tools`,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: 560,
+    minHeight: 620,
+    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: true,
+    show: false,
+    skipTaskbar: true,
+    icon: resolveAppIconPath(),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false,
+    },
+  })
+  overlayImageWindow.setAlwaysOnTop(true, 'screen-saver')
+  overlayImageWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  overlayImageWindow.setSkipTaskbar(true)
+
+  overlayImageWindow.loadURL(buildOverlayToolsUrl('image'))
+  attachWindowHealthHandlers(overlayImageWindow, 'overlay-image')
+
+  overlayImageWindow.once('ready-to-show', () => {
+    if (!isQuitting && overlayImageWindow && !overlayImageWindow.isDestroyed()) {
+      overlayImageWindow.show()
+      overlayImageWindow.focus()
+    }
+  })
+
+  overlayImageWindow.on('closed', () => {
+    overlayImageWindow = null
+  })
+
+  return overlayImageWindow
+}
+
+function showOverlayImageWindow(options = {}) {
+  const tab = normalizeOverlayToolsTab(options.tab)
+  hideTrayMenuWindow()
+  const window = createOverlayImageWindow()
+  if (!window || window.isDestroyed()) return
+  const targetUrl = buildOverlayToolsUrl(tab)
+  const currentUrl = window.webContents?.getURL?.() || ''
+  if (!currentUrl || !currentUrl.includes(`/overlay-image?tab=${tab}`)) {
+    window.loadURL(targetUrl)
+  }
+  if (window.isMinimized()) window.restore()
+  if (!window.isVisible()) window.show()
+  window.focus()
+}
+
+function closeOverlayImageWindow(options = {}) {
+  const refocusMain = options.refocusMain !== false
+  hideTrayMenuWindow()
+  if (!overlayImageWindow || overlayImageWindow.isDestroyed()) return
+  overlayImageWindow.close()
+  if (refocusMain && mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.focus()
+  }
 }
 
 function broadcastToWindows(channel, payload) {
-  const windows = [mainWindow, overlayWindow, hotkeyWindow]
+  const windows = [mainWindow, overlayWindow, overlayImageWindow, hotkeyWindow, trayMenuWindow]
   for (const win of windows) {
     if (!win || win.isDestroyed()) continue
     win.webContents.send(channel, payload)
@@ -4558,9 +6062,12 @@ function resolveTrayIcon() {
 function createTray() {
   if (tray) return
   tray = new Tray(resolveTrayIcon())
-  tray.setToolTip('QuickText')
+  tray.setToolTip(APP_DISPLAY_NAME)
   tray.on('click', () => {
-    toggleMainWindowVisibility()
+    toggleTrayMenuWindow()
+  })
+  tray.on('right-click', () => {
+    toggleTrayMenuWindow()
   })
   refreshTrayMenu({ immediate: true })
 }
@@ -4582,16 +6089,23 @@ function refreshTrayMenu(options = {}) {
     trayMenuRefreshTimer = null
   }
 
+  const settings = ensureSettings()
   const isMainVisible = !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+  const appEnabled = !!settings.appEnabled
   const overlayVisible = !!currentSettings?.overlayVisible
   const overlayInteractive = !!currentSettings?.overlayInteractive
-  const language = getUiLanguage(currentSettings)
+  const language = getUiLanguage(settings)
   const labels = TRAY_LABELS[language]
-  const signature = `${language}|${isMainVisible ? '1' : '0'}|${overlayVisible ? '1' : '0'}|${overlayInteractive ? '1' : '0'}`
+  const signature = `${language}|${isMainVisible ? '1' : '0'}|${appEnabled ? '1' : '0'}|${overlayVisible ? '1' : '0'}|${overlayInteractive ? '1' : '0'}|${settings.uiMode}|${settings.uiPalette}`
   if (signature === trayMenuSignature) return
   trayMenuSignature = signature
 
-  const menu = Menu.buildFromTemplate([
+  trayNativeFallbackMenu = Menu.buildFromTemplate([
+    {
+      label: appEnabled ? labels.disableApp : labels.enableApp,
+      click: () => applyAppToggleHotkeyAction(),
+    },
+    { type: 'separator' },
     {
       label: isMainVisible ? labels.hideManager : labels.showManager,
       click: () => toggleMainWindowVisibility(),
@@ -4616,7 +6130,133 @@ function refreshTrayMenu(options = {}) {
     },
   ])
 
-  tray.setContextMenu(menu)
+  tray.setContextMenu(trayNativeFallbackEnabled ? trayNativeFallbackMenu : null)
+}
+
+function clampToRange(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function getTrayMenuWindowBounds() {
+  const trayBounds = tray?.getBounds?.() || { x: 0, y: 0, width: TRAY_MENU_WINDOW_WIDTH, height: 0 }
+  const anchorPoint = {
+    x: Math.round((trayBounds.x || 0) + (trayBounds.width || 0) / 2),
+    y: Math.round((trayBounds.y || 0) + (trayBounds.height || 0) / 2),
+  }
+  const display = screen.getDisplayNearestPoint(anchorPoint)
+  const workArea = display?.workArea || { x: 0, y: 0, width: 800, height: 600 }
+  const minX = workArea.x + TRAY_MENU_WINDOW_MARGIN
+  const maxX = workArea.x + workArea.width - TRAY_MENU_WINDOW_WIDTH - TRAY_MENU_WINDOW_MARGIN
+  const preferredX = anchorPoint.x - Math.round(TRAY_MENU_WINDOW_WIDTH / 2)
+  const x = clampToRange(preferredX, minX, Math.max(minX, maxX))
+
+  const belowY = (trayBounds.y || 0) + (trayBounds.height || 0) + TRAY_MENU_WINDOW_MARGIN
+  const aboveY = (trayBounds.y || 0) - TRAY_MENU_WINDOW_HEIGHT - TRAY_MENU_WINDOW_MARGIN
+  const minY = workArea.y + TRAY_MENU_WINDOW_MARGIN
+  const maxY = workArea.y + workArea.height - TRAY_MENU_WINDOW_HEIGHT - TRAY_MENU_WINDOW_MARGIN
+  const y = belowY <= maxY ? belowY : clampToRange(aboveY, minY, Math.max(minY, maxY))
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: TRAY_MENU_WINDOW_WIDTH,
+    height: TRAY_MENU_WINDOW_HEIGHT,
+  }
+}
+
+function createTrayMenuWindow() {
+  if (trayMenuWindow && !trayMenuWindow.isDestroyed()) return trayMenuWindow
+
+  trayMenuWindow = new BrowserWindow({
+    title: `${APP_DISPLAY_NAME} Tray Menu`,
+    width: TRAY_MENU_WINDOW_WIDTH,
+    height: TRAY_MENU_WINDOW_HEIGHT,
+    frame: false,
+    transparent: true,
+    hasShadow: true,
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    show: false,
+    icon: resolveAppIconPath(),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false,
+    },
+  })
+
+  trayMenuWindow.setAlwaysOnTop(true, 'pop-up-menu')
+  trayMenuWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  trayMenuWindow.loadURL(buildRendererUrl('/tray-menu'))
+  attachWindowHealthHandlers(trayMenuWindow, 'tray-menu')
+
+  trayMenuWindow.on('blur', () => {
+    if (!trayMenuWindow || trayMenuWindow.isDestroyed()) return
+    trayMenuSuppressOpenUntil = Date.now() + TRAY_MENU_REOPEN_SUPPRESS_MS
+    trayMenuWindow.hide()
+  })
+
+  trayMenuWindow.on('closed', () => {
+    trayMenuWindow = null
+  })
+
+  return trayMenuWindow
+}
+
+function showTrayNativeFallbackMenu() {
+  if (!tray) return
+  refreshTrayMenu({ immediate: true })
+  if (trayNativeFallbackMenu) {
+    tray.popUpContextMenu(trayNativeFallbackMenu)
+  }
+}
+
+function showTrayMenuWindow() {
+  if (!tray) return
+  try {
+    const window = createTrayMenuWindow()
+    if (!window || window.isDestroyed()) {
+      trayNativeFallbackEnabled = true
+      showTrayNativeFallbackMenu()
+      return
+    }
+    const bounds = getTrayMenuWindowBounds()
+    window.setBounds(bounds, false)
+    if (!window.isVisible()) {
+      window.show()
+    }
+    window.focus()
+    trayNativeFallbackEnabled = false
+    tray.setContextMenu(null)
+  } catch (error) {
+    safeConsoleError('[tray] custom menu failed, fallback to native:', error)
+    trayNativeFallbackEnabled = true
+    showTrayNativeFallbackMenu()
+  }
+}
+
+function hideTrayMenuWindow() {
+  if (!trayMenuWindow || trayMenuWindow.isDestroyed()) return
+  trayMenuWindow.hide()
+}
+
+function toggleTrayMenuWindow() {
+  if (trayNativeFallbackEnabled) {
+    showTrayNativeFallbackMenu()
+    return
+  }
+  if (trayMenuWindow && !trayMenuWindow.isDestroyed() && trayMenuWindow.isVisible()) {
+    trayMenuSuppressOpenUntil = Date.now() + TRAY_MENU_REOPEN_SUPPRESS_MS
+    hideTrayMenuWindow()
+    return
+  }
+  if (Date.now() < trayMenuSuppressOpenUntil) return
+  showTrayMenuWindow()
 }
 
 function getUiLanguage(settings) {
@@ -4800,12 +6440,16 @@ function cleanupRuntime() {
   }
 
   destroyManagedWindow(hotkeyWindow)
+  destroyManagedWindow(trayMenuWindow)
   destroyManagedWindow(startupSplashWindow)
+  destroyManagedWindow(overlayImageWindow)
   destroyManagedWindow(overlayWindow)
   destroyManagedWindow(mainWindow)
 
   hotkeyWindow = null
+  trayMenuWindow = null
   startupSplashWindow = null
+  overlayImageWindow = null
   overlayWindow = null
   mainWindow = null
   packagedRendererProcess = null
@@ -4816,11 +6460,22 @@ function cleanupRuntime() {
   settingsWritePromise = Promise.resolve()
   lastSettingsWriteError = null
   unregisterElectronHotkeys()
+  unregisterStandaloneAppToggleHotkey()
+  unregisterAltF4BlockShortcut()
+  clearOverlaySmartZoneMonitor()
   hotkeySignature = ''
   electronHotkeyRegistrations = []
+  standaloneAppToggleHotkeyRegistration = ''
   overlayMousePassThrough = true
+  overlayInteractiveZones = {
+    quickAdd: null,
+  }
+  overlaySmartZoneInsideLast = false
   overlayBoundsSignature = ''
   trayMenuSignature = ''
+  trayNativeFallbackMenu = null
+  trayNativeFallbackEnabled = false
+  trayMenuSuppressOpenUntil = 0
   settingsWindowRestorePending = false
   suppressSettingsBlurClose = false
   settingsWindowAutoShowOnReady = false
@@ -4839,6 +6494,15 @@ function cleanupRuntime() {
   managedPythonHealthAt = 0
   managedPythonHealthOk = false
   managedPythonLaunchCommand = ''
+  if (nativeInputCore && typeof nativeInputCore.shutdown === 'function') {
+    try {
+      nativeInputCore.shutdown()
+    } catch {
+      // Ignore native shutdown errors while exiting.
+    }
+  }
+  nativeInputCore = null
+  inputBackendName = ''
   updateRuntime = createDefaultUpdateRuntime()
   updateCheckPromise = null
   autoUpdaterInitialized = false
@@ -4848,6 +6512,11 @@ function cleanupRuntime() {
 
   ipcMain.removeHandler('get-window-kind')
   ipcMain.removeHandler('get-settings')
+  ipcMain.removeHandler('overlay-image-session:get')
+  ipcMain.removeHandler('overlay-image-session:save')
+  ipcMain.removeHandler('overlay-image-history:get')
+  ipcMain.removeHandler('overlay-image-history:save')
+  ipcMain.removeHandler('window:set-mode')
   ipcMain.removeHandler('save-settings')
   ipcMain.removeHandler('telemetry:get')
   ipcMain.removeHandler('telemetry:report-send')
@@ -4859,10 +6528,12 @@ function cleanupRuntime() {
   ipcMain.removeHandler('python:send')
   ipcMain.removeHandler('python:configure')
   ipcMain.removeHandler('python:events')
+  ipcMain.removeHandler('lens:search-image')
   ipcMain.removeHandler('overlay:toggle-visibility')
   ipcMain.removeHandler('overlay:toggle-interaction')
   ipcMain.removeHandler('overlay:set-interaction')
   ipcMain.removeHandler('overlay:set-mouse-pass-through')
+  ipcMain.removeHandler('overlay:set-interactive-zones')
   ipcMain.removeHandler('update:get-state')
   ipcMain.removeHandler('update:check')
   ipcMain.removeHandler('update:install')
@@ -4878,6 +6549,8 @@ function cleanupRuntime() {
   ipcMain.removeAllListeners('hotkey:close')
   ipcMain.removeAllListeners('overlay-settings:open')
   ipcMain.removeAllListeners('overlay-settings:close')
+  ipcMain.removeAllListeners('overlay-image:open')
+  ipcMain.removeAllListeners('overlay-image:close')
   ipcMain.removeAllListeners('app:quit')
 }
 
@@ -4902,6 +6575,16 @@ if (hasSingleInstanceLock) {
     .then(async () => {
       logStartupPhase('app.whenReady')
       if (!(await ensureAdminOrExit())) return
+      try {
+        ensureInputBackendReady()
+      } catch (error) {
+        dialog.showErrorBox(
+          `${APP_DISPLAY_NAME} startup failed`,
+          error instanceof Error ? error.message : 'Unable to initialize input backend.',
+        )
+        requestAppQuit()
+        return
+      }
       if (ensureAutoUpdaterInitialized()) {
         setTimeout(() => {
           void checkForAppUpdates('startup')
@@ -4929,7 +6612,7 @@ if (hasSingleInstanceLock) {
       })()
       const pythonWarmupPromise = settingsLoadPromise
         .then(async () => {
-          await syncPythonServiceForSettings(ensureSettings(), 'startup-warmup')
+          await syncInputRuntimeForSettings(ensureSettings(), 'startup-warmup')
           return true
         })
         .catch((error) => {
@@ -4963,7 +6646,7 @@ if (hasSingleInstanceLock) {
       const rendererBooted = await rendererBootPromise
       if (!rendererBooted) {
         dialog.showErrorBox(
-          'QuickText startup failed',
+          `${APP_DISPLAY_NAME} startup failed`,
           'Unable to start the packaged renderer server.',
         )
         requestAppQuit()
@@ -5034,8 +6717,12 @@ if (hasSingleInstanceLock) {
 app.on('activate', () => {
   if (!hasSingleInstanceLock) return
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow()
-  showMainWindow()
-  applySettingsToWindows(ensureSettings())
+  const settings = ensureSettings()
+  const keepMainHiddenForOverlayPlay = !!settings.appEnabled && !!settings.overlayVisible && !settings.overlayInteractive
+  if (!keepMainHiddenForOverlayPlay) {
+    showMainWindow()
+  }
+  applySettingsToWindows(settings)
   if (!overlayWindow || overlayWindow.isDestroyed()) {
     scheduleOverlayBoot('activate', 160)
   }
@@ -5103,6 +6790,9 @@ const IPC_SCHEMAS = {
     .passthrough(),
   profilingBatch: z.array(z.any()),
   pythonPayload: z.record(z.any()),
+  lensSearchPayload: z.record(z.any()),
+  overlayImageHistory: z.array(z.any()),
+  overlayImageSession: z.record(z.any()),
   pythonAfter: z.union([
     z.number().int().nonnegative(),
     z.string(),
@@ -5124,7 +6814,26 @@ const IPC_SCHEMAS = {
       })
       .passthrough(),
   ]),
+  windowMode: z.enum(['manager', 'overlay']),
   booleanFlag: z.boolean(),
+  overlayInteractiveZones: z
+    .object({
+      quickAdd: z
+        .union([
+          z
+            .object({
+              x: z.number().finite(),
+              y: z.number().finite(),
+              width: z.number().finite(),
+              height: z.number().finite(),
+              enabled: z.boolean().optional(),
+            })
+            .passthrough(),
+          z.null(),
+        ])
+        .optional(),
+    })
+    .passthrough(),
 }
 
 function resolveTrustedRendererOrigins() {
@@ -5235,6 +6944,9 @@ function patchTouchesWindowState(patch) {
     'overlayVisible',
     'overlayInteractive',
     'overlaySmartClickThrough',
+    'overlayToolsPanelVisible',
+    'overlayToolsShowTextManager',
+    'overlayToolsShowImageTranslate',
     'overlayX',
     'overlayY',
     'overlayWidth',
@@ -5247,28 +6959,45 @@ function patchTouchesWindowState(patch) {
 }
 
 function patchTouchesTrayState(patch) {
-  return patchHasAnyKey(patch, ['overlayVisible', 'overlayInteractive', 'uiLanguage'])
+  return patchHasAnyKey(patch, ['overlayVisible', 'overlayInteractive', 'uiLanguage', 'uiMode', 'uiPalette', 'appEnabled'])
 }
 
 function patchTouchesPythonRuntimeState(patch) {
   return patchHasAnyKey(patch, [
     'appEnabled',
+    'blockAltF4WhenEnabled',
     'sendHotkey',
     'appToggleHotkey',
     'overlayToggleHotkey',
     'mainToggleHotkey',
     'overlayEditHotkey',
+    'selectedIndex',
+    'items',
   ])
 }
 
 withIpcHandle('get-window-kind', null, (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender)
   if (overlayWindow && owner && owner.id === overlayWindow.id) return 'overlay'
+  if (overlayImageWindow && owner && owner.id === overlayImageWindow.id) return 'overlay-image'
   if (hotkeyWindow && owner && owner.id === hotkeyWindow.id) return 'settings'
+  if (trayMenuWindow && owner && owner.id === trayMenuWindow.id) return 'tray-menu'
   return 'main'
 })
 
 withIpcHandle('get-settings', null, async () => ensureSettings())
+withIpcHandle('overlay-image-session:get', null, async () => loadOverlayImageSession())
+withIpcHandle('overlay-image-session:save', IPC_SCHEMAS.overlayImageSession, async (_event, payload) => {
+  return saveOverlayImageSession(payload)
+})
+withIpcHandle('overlay-image-history:get', null, async () => loadOverlayImageHistory())
+withIpcHandle('overlay-image-history:save', IPC_SCHEMAS.overlayImageHistory, async (_event, entries) => {
+  return saveOverlayImageHistory(entries)
+})
+
+withIpcHandle('window:set-mode', IPC_SCHEMAS.windowMode, async (_event, mode) => {
+  return setWindowMode(mode)
+})
 
 withIpcHandle('telemetry:get', null, async () => ensureTelemetry())
 
@@ -5295,15 +7024,19 @@ withIpcHandle('profiling:report-performance-entries', IPC_SCHEMAS.profilingBatch
 })
 
 withIpcHandle('python:send', IPC_SCHEMAS.pythonPayload, async (_event, payload) => {
-  return handlePythonSend(payload)
+  return handleInputSend(payload)
 })
 
 withIpcHandle('python:configure', IPC_SCHEMAS.pythonPayload, async (_event, payload) => {
-  return handlePythonConfigure(payload)
+  return handleInputConfigure(payload)
 })
 
 withIpcHandle('python:events', IPC_SCHEMAS.pythonAfter, async (_event, after) => {
-  return handlePythonEvents(after)
+  return handleInputEvents(after)
+})
+
+withIpcHandle('lens:search-image', IPC_SCHEMAS.lensSearchPayload, async (_event, payload) => {
+  return handleLensSearchImage(payload)
 })
 
 withIpcHandle('save-settings', IPC_SCHEMAS.saveSettings, async (_event, rawInput) => {
@@ -5336,9 +7069,14 @@ withIpcHandle('save-settings', IPC_SCHEMAS.saveSettings, async (_event, rawInput
   ensureHotkeys(currentSettings)
   if (patchTouchesPythonRuntimeState(patchPayload)) {
     if (Object.prototype.hasOwnProperty.call(patchPayload, 'appEnabled')) {
-      await syncPythonServiceForSettings(currentSettings, 'save-settings-app-enabled')
+      if (currentSettings.appEnabled) {
+        await syncInputRuntimeForSettings(currentSettings, 'save-settings-app-enabled')
+      } else {
+        // App-off should feel instant; sync backend asynchronously after UI/state are applied.
+        void syncInputRuntimeForSettings(currentSettings, 'save-settings-app-disabled')
+      }
     } else {
-      void syncPythonServiceForSettings(currentSettings, 'save-settings')
+      void syncInputRuntimeForSettings(currentSettings, 'save-settings')
     }
   }
   broadcastSettings()
@@ -5363,6 +7101,8 @@ withIpcHandle('overlay:set-interaction', IPC_SCHEMAS.booleanFlag, async (_event,
   settings.overlayInteractive = !!interactive
   if (settings.overlayInteractive) {
     ensureOverlayWindowForCurrentSettings()
+    settings.overlayToolsPanelVisible = true
+    settings.overlayToolsActiveTab = 'image'
   }
   if (!settings.overlayInteractive) {
     overlayMousePassThrough = true
@@ -5379,6 +7119,11 @@ withIpcHandle('overlay:set-interaction', IPC_SCHEMAS.booleanFlag, async (_event,
 withIpcHandle('overlay:set-mouse-pass-through', IPC_SCHEMAS.booleanFlag, async (_event, passThrough) => {
   const next = setOverlayMousePassThrough(!!passThrough)
   return !!next
+})
+
+withIpcHandle('overlay:set-interactive-zones', IPC_SCHEMAS.overlayInteractiveZones, async (event, zones) => {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return false
+  return setOverlayInteractiveZones(zones)
 })
 
 withIpcHandle('update:get-state', null, async () => {
@@ -5436,6 +7181,24 @@ withIpcListener('overlay-settings:open', null, () => {
 
 withIpcListener('overlay-settings:close', null, () => {
   closeOverlaySettingsWindow()
+})
+
+withIpcListener('overlay-image:open', null, (_event, payload) => {
+  const rawTab =
+    typeof payload === 'string'
+      ? payload
+      : payload && typeof payload === 'object' && typeof payload.tab === 'string'
+        ? payload.tab
+        : undefined
+  const tab =
+    typeof rawTab === 'string' && rawTab.trim()
+      ? normalizeOverlayToolsTab(rawTab)
+      : undefined
+  showOverlayImageWindow(tab ? { tab } : undefined)
+})
+
+withIpcListener('overlay-image:close', null, () => {
+  closeOverlayImageWindow()
 })
 
 withIpcListener('app:quit', null, () => {

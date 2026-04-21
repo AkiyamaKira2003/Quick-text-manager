@@ -31,7 +31,14 @@ export function useSettings() {
     if (window.electronAPI?.saveSettings) {
       saveInFlightRef.current = true
       try {
-        const updated = normalizeSettings(await window.electronAPI.saveSettings(patch))
+        const savePayload = isCriticalRuntimePatch(patch)
+          ? {
+              patch,
+              immediate: true,
+              awaitFlush: true,
+            }
+          : patch
+        const updated = safeNormalizeSettings(await window.electronAPI.saveSettings(savePayload), settingsRef.current)
         settingsRef.current = updated
         setSettings(updated)
       } catch (error) {
@@ -74,14 +81,22 @@ export function useSettings() {
       if (!current) return
       if (!hasPatchChanges(current, partial)) return
 
-      const next = normalizeSettings({ ...current, ...partial })
+      const next = safeNormalizeSettings({ ...current, ...partial }, current)
       settingsRef.current = next
       setSettings(next)
 
       pendingPatchRef.current = { ...pendingPatchRef.current, ...partial }
+      if (isCriticalRuntimePatch(partial)) {
+        if (saveTimerRef.current !== null) {
+          window.clearTimeout(saveTimerRef.current)
+          saveTimerRef.current = null
+        }
+        await flushPendingSettings()
+        return
+      }
       scheduleSettingsFlush()
     },
-    [scheduleSettingsFlush],
+    [flushPendingSettings, scheduleSettingsFlush],
   )
 
   useEffect(() => {
@@ -93,7 +108,7 @@ export function useSettings() {
       if (window.electronAPI?.getSettings) {
         try {
           const loaded = await withTimeout(window.electronAPI.getSettings(), SETTINGS_IPC_LOAD_TIMEOUT_MS, 'getSettings timeout')
-          const normalized = normalizeSettings(loaded)
+          const normalized = safeNormalizeSettings(loaded, webFallback)
           if (!mounted) return
           settingsRef.current = normalized
           setSettings(normalized)
@@ -117,7 +132,7 @@ export function useSettings() {
   useEffect(() => {
     if (!window.electronAPI?.onSettingsUpdated) return
     return window.electronAPI.onSettingsUpdated((next) => {
-      const normalized = normalizeSettings(next)
+      const normalized = safeNormalizeSettings(next, settingsRef.current)
       settingsRef.current = normalized
       setSettings(normalized)
     })
@@ -161,7 +176,7 @@ function loadWebSettings(): Settings | null {
   try {
     const raw = window.localStorage.getItem(WEB_SETTINGS_STORAGE_KEY)
     if (!raw) return null
-    return normalizeSettings(JSON.parse(raw) as Partial<Settings>)
+    return safeNormalizeSettings(JSON.parse(raw) as Partial<Settings>)
   } catch {
     return null
   }
@@ -245,4 +260,17 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
         reject(error)
       })
   })
+}
+
+function isCriticalRuntimePatch(partial: Partial<Settings>) {
+  return Object.prototype.hasOwnProperty.call(partial, 'appEnabled')
+}
+
+function safeNormalizeSettings(value: Partial<Settings> | Settings | null | undefined, fallback?: Settings | null) {
+  try {
+    return normalizeSettings(value ?? undefined)
+  } catch (error) {
+    console.error('[settings] normalize failed, fallback to safe defaults:', error)
+    return fallback ?? getDefaultSettings()
+  }
 }

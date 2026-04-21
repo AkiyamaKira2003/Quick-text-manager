@@ -1,11 +1,23 @@
 'use client'
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import Image from 'next/image'
+import { Eye, Hash, ImageIcon, Loader2, MessageSquareText, Palette, Ruler, SlidersHorizontal, Type, X } from 'lucide-react'
+import OverlayUnifiedToolsPanel from '@/components/OverlayUnifiedToolsPanel'
 import { useSettings } from '@/hooks/use-settings'
 import { t } from '@/lib/i18n'
-import type { HotkeyErrorSource, PythonConfigurePayload, PythonEventsResult, PythonInputEvent, Settings } from '@/types'
+import { computeMorphTransform, isRectSnapshotValid } from '@/lib/overlay-morph'
+import { computeHorizontalTooltipPlacement } from '@/lib/overlay-tooltip'
+import type {
+  HotkeyErrorSource,
+  OverlayImageCardState,
+  OverlayRectSnapshot,
+  PythonConfigurePayload,
+  PythonEventsResult,
+  PythonInputEvent,
+  Settings,
+} from '@/types'
 
 const API_ENDPOINTS = {
   send: '/api/send',
@@ -43,11 +55,18 @@ const ACTION_SUCCESS_FEEDBACK_MS = 900
 const ACTION_ERROR_FEEDBACK_MS = 2400
 const INPUT_ACTION_DEFAULT_DEBOUNCE_MS = 200
 const INPUT_ACTION_TOGGLE_DEBOUNCE_MS = 650
+const INPUT_ACTION_CAPTURE_PROBE_DEBOUNCE_MS = 90
+const APP_TOGGLE_ACTION_LOCK_MS = 1200
+const TOOLBOX_POSITION_TRACK_INTERVAL_MS = 16
 const KEYBOARD_MOVE_STEP_PX = 1
 const KEYBOARD_MOVE_FAST_STEP_PX = 5
 const WHEEL_BUFFER_DEBOUNCE_MS = 56
 const WHEEL_MAX_BATCH_STEPS = 6
 const PHRASE_SWITCH_TRANSITION_MS = 120
+const MORPH_ENTER_DURATION_MS = 260
+const MORPH_EXIT_DURATION_MS = 240
+const IMAGE_CARD_WIDTH_PX = 248
+const IMAGE_CARD_HEIGHT_PX = 124
 
 type SendFeedbackState = 'idle' | 'optimistic' | 'success' | 'error'
 type ActionFeedbackState = 'idle' | 'optimistic' | 'success' | 'error'
@@ -60,6 +79,7 @@ type ActionFeedback = {
 type InputEventPayload = PythonInputEvent
 
 type EditableElement = 'text' | 'note' | 'icon' | 'counter'
+type OverlayToolId = 'visibility' | 'opacity' | 'color' | 'resize'
 
 type Offsets = {
   textX: number
@@ -75,6 +95,8 @@ type Offsets = {
 type StyleDraft = {
   opacity: number
   noteOpacity: number
+  iconOpacity: number
+  counterOpacity: number
   fontSize: number
   noteSize: number
   textColor: string
@@ -100,6 +122,59 @@ type DragUiPatch = {
   toolboxOpen?: boolean
 }
 
+type HoverHint = {
+  label: string
+  anchorEl: HTMLElement
+}
+
+type MorphTarget = 'text' | 'image'
+type MorphDirection = 'toPlay' | 'toEdit'
+
+type MorphGhost = {
+  id: number
+  target: MorphTarget
+  direction: MorphDirection
+  running: boolean
+  from: OverlayRectSnapshot
+  to: OverlayRectSnapshot
+  text?: {
+    title: string
+    note: string
+  }
+  image?: {
+    previewDataUrl: string
+    imageName: string
+    isSearching: boolean
+    resultsCount: number
+    lensError: string
+  }
+}
+
+function createDefaultActiveToolByElement(): Record<EditableElement, OverlayToolId | null> {
+  return {
+    text: null,
+    note: null,
+    icon: null,
+    counter: null,
+  }
+}
+
+function hasAnyActiveTool(state: Record<EditableElement, OverlayToolId | null>) {
+  return !!(state.text || state.note || state.icon || state.counter)
+}
+
+function createEmptyImageCardState(): OverlayImageCardState {
+  return {
+    hasImage: false,
+    previewDataUrl: '',
+    imageName: '',
+    isSearching: false,
+    lensUrl: '',
+    lensError: '',
+    resultsCount: 0,
+  }
+}
+
 function OverlayPageComponent() {
   const { settings, settingsRef, updateSettings } = useSettings()
   const [isSending, setIsSending] = useState(false)
@@ -107,16 +182,40 @@ function OverlayPageComponent() {
   const [sendFeedbackState, setSendFeedbackState] = useState<SendFeedbackState>('idle')
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback>({ state: 'idle', message: '' })
   const [dragTarget, setDragTarget] = useState<EditableElement | null>(null)
-  const [selectedElement, setSelectedElement] = useState<EditableElement>('text')
+  const [selectedElement, setSelectedElement] = useState<EditableElement>('icon')
   const [hoveredElement, setHoveredElement] = useState<EditableElement | null>(null)
   const [draftOffsets, setDraftOffsets] = useState<Offsets | null>(null)
   const [styleDraft, setStyleDraft] = useState<StyleDraft | null>(null)
   const [displayIndex, setDisplayIndex] = useState(0)
   const [isOpacityEditing, setIsOpacityEditing] = useState(false)
   const [isToolboxOpen, setIsToolboxOpen] = useState(false)
-
+  const [isHudOpacityOpen, setIsHudOpacityOpen] = useState(false)
+  const [, setOverlayTextInteractionActive] = useState(false)
+  const [captureProbeToken, setCaptureProbeToken] = useState(0)
+  const [imageCardState, setImageCardState] = useState<OverlayImageCardState>(() => createEmptyImageCardState())
+  const [imageCardDraftOffset, setImageCardDraftOffset] = useState<{ x: number; y: number } | null>(null)
+  const [windowRects, setWindowRects] = useState<Record<MorphTarget, OverlayRectSnapshot | null>>({
+    text: null,
+    image: null,
+  })
+  const windowRectsRef = useRef<Record<MorphTarget, OverlayRectSnapshot | null>>({ text: null, image: null })
+  const [hiddenByMorphTargets, setHiddenByMorphTargets] = useState<Record<MorphTarget, boolean>>({
+    text: false,
+    image: false,
+  })
+  const [morphGhosts, setMorphGhosts] = useState<MorphGhost[]>([])
+  const [activeToolByElement, setActiveToolByElement] = useState<Record<EditableElement, OverlayToolId | null>>(
+    () => createDefaultActiveToolByElement(),
+  )
   const overlayRef = useRef<HTMLDivElement | null>(null)
-  const toolboxRef = useRef<HTMLDivElement | null>(null)
+  const textHudRef = useRef<HTMLDivElement | null>(null)
+  const imageCardRef = useRef<HTMLDivElement | null>(null)
+  const hotspotRefs = useRef<Record<EditableElement, HTMLElement | null>>({
+    text: null,
+    note: null,
+    icon: null,
+    counter: null,
+  })
   const offsetsRef = useRef<Offsets | null>(null)
   const pendingDragUiPatchRef = useRef<DragUiPatch | null>(null)
   const dragFrameRef = useRef<number | null>(null)
@@ -138,26 +237,148 @@ function OverlayPageComponent() {
   const wheelBufferRef = useRef(0)
   const queuedSwitchStepsRef = useRef(0)
   const switchAnimatingRef = useRef(false)
+  const editModeAnimationTimerRef = useRef<number | null>(null)
+  const previousInteractiveRef = useRef<boolean | null>(null)
+  const pendingMorphToEditRef = useRef<Record<MorphTarget, boolean>>({ text: false, image: false })
+  const playRectsRef = useRef<Record<MorphTarget, OverlayRectSnapshot | null>>({ text: null, image: null })
+  const morphTargetTokenRef = useRef<Record<MorphTarget, number>>({ text: 0, image: 0 })
+  const morphTimersRef = useRef<number[]>([])
+  const morphIdRef = useRef(0)
   const pythonSyncTimerRef = useRef<number | null>(null)
   const pythonSyncSignatureRef = useRef('')
   const lastInputActionTriggerAtRef = useRef<Record<string, number>>({})
-  const appToggleInFlightRef = useRef(false)
+  const appToggleInFlightUntilRef = useRef(0)
   const lastHotkeyErrorRef = useRef<{ source: HotkeyErrorSource; message: string; at: number }>({
     source: 'unknown',
     message: '',
     at: 0,
   })
+  const imageCardDragRef = useRef<{
+    startClientX: number
+    startClientY: number
+    originX: number
+    originY: number
+  } | null>(null)
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
   const itemCount = settings?.items.length ?? 0
   const activeSettingsIndex = itemCount > 0 ? Math.max(0, Math.min(displayIndex, itemCount - 1)) : 0
   const activeSettingsItem = settings ? settings.items[activeSettingsIndex] ?? null : null
   const activeItemText = (activeSettingsItem?.text ?? '').trim()
   const activeItemNote = activeSettingsItem?.note ?? ''
-  const sendHotkey = settings?.sendHotkey.trim() ?? ''
-  const appToggleHotkey = settings?.appToggleHotkey.trim() ?? ''
-  const overlayToggleHotkey = settings?.overlayToggleHotkey.trim() ?? ''
-  const mainToggleHotkey = settings?.mainToggleHotkey.trim() ?? ''
-  const overlayEditHotkey = settings?.overlayEditHotkey.trim() ?? ''
+  const sendHotkey = settings?.sendHotkey?.trim() || null
+  const overlayToggleHotkey = settings?.overlayToggleHotkey?.trim() || null
+  const mainToggleHotkey = settings?.mainToggleHotkey?.trim() || null
+  const overlayEditHotkey = settings?.overlayEditHotkey?.trim() || null
   const appEnabled = settings?.appEnabled ?? true
+  const isInteractiveRuntime = !!(settings?.appEnabled && settings?.overlayInteractive)
+  const [editModeTransitionPhase, setEditModeTransitionPhase] = useState<'idle' | 'enter' | 'exit'>('idle')
+  const activeToolboxElement: EditableElement = selectedElement === 'note' && !activeItemNote ? 'text' : selectedElement
+
+  const setToolForElement = useCallback(
+    (target: EditableElement, nextTool: OverlayToolId | null) => {
+      setActiveToolByElement((current) => {
+        if (current[target] === nextTool) return current
+        return {
+          ...current,
+          [target]: nextTool,
+        }
+      })
+    },
+    [],
+  )
+
+  const setActiveTool = useCallback(
+    (nextTool: OverlayToolId | null) => {
+      setToolForElement(activeToolboxElement, nextTool)
+    },
+    [activeToolboxElement, setToolForElement],
+  )
+
+  const resetAllToolboxStates = useCallback(() => {
+    setActiveToolByElement((current) => (hasAnyActiveTool(current) ? createDefaultActiveToolByElement() : current))
+  }, [])
+
+  const playTextEnabled = false
+  const playImageCardEnabled = false
+
+  const handleWindowRectChange = useCallback((panel: MorphTarget, rect: OverlayRectSnapshot | null) => {
+    windowRectsRef.current = { ...windowRectsRef.current, [panel]: rect }
+    setWindowRects((current) => {
+      if (isSameRectSnapshot(current[panel], rect)) return current
+      return { ...current, [panel]: rect }
+    })
+  }, [])
+
+  const handleImageCardStateChange = useCallback((next: OverlayImageCardState) => {
+    setImageCardState((current) => (isSameImageCardState(current, next) ? current : next))
+  }, [])
+
+  const runMorph = useCallback(
+    (
+      target: MorphTarget,
+      direction: MorphDirection,
+      fromRect: OverlayRectSnapshot | null,
+      toRect: OverlayRectSnapshot | null,
+    ) => {
+      if (prefersReducedMotion) return false
+      if (!isValidRectSnapshot(fromRect) || !isValidRectSnapshot(toRect)) return false
+      if (isNearlySameRect(fromRect, toRect)) return false
+
+      const durationMs = direction === 'toEdit' ? MORPH_ENTER_DURATION_MS : MORPH_EXIT_DURATION_MS
+      const id = morphIdRef.current + 1
+      morphIdRef.current = id
+      const token = morphTargetTokenRef.current[target] + 1
+      morphTargetTokenRef.current[target] = token
+
+      setHiddenByMorphTargets((current) => (current[target] ? current : { ...current, [target]: true }))
+      setMorphGhosts((current) => [
+        ...current,
+        {
+          id,
+          target,
+          direction,
+          running: false,
+          from: fromRect,
+          to: toRect,
+          text:
+            target === 'text'
+              ? {
+                  title: activeItemText || t(settings?.uiLanguage ?? 'vi', 'overlay.hudEmpty'),
+                  note: activeItemNote,
+                }
+              : undefined,
+          image:
+            target === 'image'
+              ? {
+                  previewDataUrl: imageCardState.previewDataUrl,
+                  imageName: imageCardState.imageName,
+                  isSearching: imageCardState.isSearching,
+                  resultsCount: imageCardState.resultsCount,
+                  lensError: imageCardState.lensError,
+                }
+              : undefined,
+        },
+      ])
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setMorphGhosts((current) => current.map((ghost) => (ghost.id === id ? { ...ghost, running: true } : ghost)))
+        })
+      })
+
+      const timerId = window.setTimeout(() => {
+        morphTimersRef.current = morphTimersRef.current.filter((value) => value !== timerId)
+        setMorphGhosts((current) => current.filter((ghost) => ghost.id !== id))
+        if (morphTargetTokenRef.current[target] === token) {
+          setHiddenByMorphTargets((current) => (current[target] ? { ...current, [target]: false } : current))
+        }
+      }, durationMs + 34)
+      morphTimersRef.current.push(timerId)
+
+      return true
+    },
+    [activeItemNote, activeItemText, imageCardState, prefersReducedMotion, settings?.uiLanguage],
+  )
 
   const reportSendTelemetry = useCallback((payload: { success: boolean; latencyMs: number; error?: string }) => {
     if (!window.electronAPI?.reportSendTelemetry) return
@@ -319,7 +540,16 @@ function OverlayPageComponent() {
       if (current && isSameStyleDraft(current, nextStyle)) return current
       return nextStyle
     })
-  }, [settings?.opacity, settings?.noteOpacity, settings?.fontSize, settings?.noteSize, settings?.textColor, settings?.noteColor])
+  }, [
+    settings?.counterOpacity,
+    settings?.fontSize,
+    settings?.iconOpacity,
+    settings?.noteColor,
+    settings?.noteOpacity,
+    settings?.noteSize,
+    settings?.opacity,
+    settings?.textColor,
+  ])
 
   useEffect(() => {
     if (!settings) return
@@ -336,6 +566,11 @@ function OverlayPageComponent() {
   }, [activeItemNote, selectedElement])
 
   useEffect(() => {
+    if (activeItemNote) return
+    setActiveToolByElement((current) => (current.note ? { ...current, note: null } : current))
+  }, [activeItemNote])
+
+  useEffect(() => {
     if (!settings || settings.appEnabled) return
     if (!settings.overlayVisible && !settings.overlayInteractive) return
     void updateSettings({
@@ -345,22 +580,185 @@ function OverlayPageComponent() {
   }, [settings, updateSettings])
 
   useEffect(() => {
-    if ((!settings?.overlayInteractive || !settings?.appEnabled) && isOpacityEditing) {
+    if (!settings?.overlayInteractive || !settings?.appEnabled) {
       setIsOpacityEditing(false)
     }
-  }, [isOpacityEditing, settings?.appEnabled, settings?.overlayInteractive])
+    if (!settings?.appEnabled) {
+      resetAllToolboxStates()
+    }
+  }, [resetAllToolboxStates, settings?.appEnabled, settings?.overlayInteractive])
 
   useEffect(() => {
     if (settings?.overlayInteractive && settings?.appEnabled) return
     setIsToolboxOpen(false)
+    setIsOpacityEditing(false)
+    setIsHudOpacityOpen(false)
+    setActiveToolByElement((current) => (hasAnyActiveTool(current) ? createDefaultActiveToolByElement() : current))
     setHoveredElement(null)
   }, [settings?.appEnabled, settings?.overlayInteractive])
 
   useEffect(() => {
-    if (!isToolboxOpen && isOpacityEditing) {
-      setIsOpacityEditing(false)
+    if (isInteractiveRuntime) return
+    imageCardDragRef.current = null
+    setImageCardDraftOffset(null)
+  }, [isInteractiveRuntime])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const apply = () => {
+      setPrefersReducedMotion(media.matches)
     }
-  }, [isOpacityEditing, isToolboxOpen])
+    apply()
+    const handleChange = () => apply()
+    media.addEventListener('change', handleChange)
+    return () => {
+      media.removeEventListener('change', handleChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!prefersReducedMotion) return
+    for (const timerId of morphTimersRef.current) {
+      window.clearTimeout(timerId)
+    }
+    morphTimersRef.current = []
+    setMorphGhosts([])
+    setHiddenByMorphTargets({ text: false, image: false })
+  }, [prefersReducedMotion])
+
+  useLayoutEffect(() => {
+    if (!isInteractiveRuntime && playTextEnabled) {
+      playRectsRef.current.text = toRectSnapshotFromElement(textHudRef.current)
+    }
+    if (!isInteractiveRuntime && playImageCardEnabled) {
+      playRectsRef.current.image = toRectSnapshotFromElement(imageCardRef.current)
+    }
+  }, [displayIndex, imageCardDraftOffset, imageCardState.previewDataUrl, isInteractiveRuntime, playImageCardEnabled, playTextEnabled])
+
+  useEffect(() => {
+    let rafOne: number | null = null
+    let rafTwo: number | null = null
+
+    const previous = previousInteractiveRef.current
+    if (previous === null) {
+      previousInteractiveRef.current = isInteractiveRuntime
+      return () => {
+        if (rafOne !== null) window.cancelAnimationFrame(rafOne)
+        if (rafTwo !== null) window.cancelAnimationFrame(rafTwo)
+      }
+    }
+    if (previous === isInteractiveRuntime) {
+      return () => {
+        if (rafOne !== null) window.cancelAnimationFrame(rafOne)
+        if (rafTwo !== null) window.cancelAnimationFrame(rafTwo)
+      }
+    }
+    previousInteractiveRef.current = isInteractiveRuntime
+    if (editModeAnimationTimerRef.current !== null) {
+      window.clearTimeout(editModeAnimationTimerRef.current)
+      editModeAnimationTimerRef.current = null
+    }
+    setEditModeTransitionPhase(isInteractiveRuntime ? 'enter' : 'exit')
+    editModeAnimationTimerRef.current = window.setTimeout(() => {
+      editModeAnimationTimerRef.current = null
+      setEditModeTransitionPhase('idle')
+    }, 260)
+
+    if (isInteractiveRuntime) {
+      pendingMorphToEditRef.current = {
+        text: playTextEnabled,
+        image: playImageCardEnabled,
+      }
+      return () => {
+        if (rafOne !== null) window.cancelAnimationFrame(rafOne)
+        if (rafTwo !== null) window.cancelAnimationFrame(rafTwo)
+      }
+    }
+
+    pendingMorphToEditRef.current = { text: false, image: false }
+    rafOne = window.requestAnimationFrame(() => {
+      rafTwo = window.requestAnimationFrame(() => {
+        const textToRect = playTextEnabled ? toRectSnapshotFromElement(textHudRef.current) : null
+        const imageToRect = playImageCardEnabled ? toRectSnapshotFromElement(imageCardRef.current) : null
+        const textFromRect = windowRectsRef.current.text
+        const imageFromRect = windowRectsRef.current.image
+        const textStarted = playTextEnabled ? runMorph('text', 'toPlay', textFromRect, textToRect) : false
+        const imageStarted = playImageCardEnabled ? runMorph('image', 'toPlay', imageFromRect, imageToRect) : false
+
+        if (!textStarted) {
+          setHiddenByMorphTargets((current) => (current.text ? { ...current, text: false } : current))
+        }
+        if (!imageStarted) {
+          setHiddenByMorphTargets((current) => (current.image ? { ...current, image: false } : current))
+        }
+      })
+    })
+
+    return () => {
+      if (rafOne !== null) window.cancelAnimationFrame(rafOne)
+      if (rafTwo !== null) window.cancelAnimationFrame(rafTwo)
+    }
+  }, [isInteractiveRuntime, playImageCardEnabled, playTextEnabled, runMorph])
+
+  useEffect(() => {
+    if (!isInteractiveRuntime) return
+    const pending = pendingMorphToEditRef.current
+    if (!pending.text && !pending.image) return
+
+    let hasUpdate = false
+    const nextPending = { ...pending }
+    ;(['text', 'image'] as const).forEach((target) => {
+      if (!pending[target]) return
+      const toRect = windowRectsRef.current[target]
+      if (!isValidRectSnapshot(toRect)) return
+      const fromRect =
+        playRectsRef.current[target] ??
+        (target === 'text' ? toRectSnapshotFromElement(textHudRef.current) : toRectSnapshotFromElement(imageCardRef.current))
+      runMorph(target, 'toEdit', fromRect, toRect)
+      nextPending[target] = false
+      hasUpdate = true
+    })
+    if (hasUpdate) {
+      pendingMorphToEditRef.current = nextPending
+    }
+  }, [isInteractiveRuntime, runMorph, windowRects.image, windowRects.text])
+
+  useEffect(() => {
+    if (!isToolboxOpen) {
+      setIsOpacityEditing(false)
+      setActiveTool(null)
+    }
+  }, [isToolboxOpen, setActiveTool])
+
+  useEffect(() => {
+    if (!isHudOpacityOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null
+      if (!target) return
+      if (target.closest('[data-overlay-toolbox="true"]')) return
+      setIsHudOpacityOpen(false)
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setIsHudOpacityOpen(false)
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isHudOpacityOpen])
+
+  useEffect(() => {
+    setIsOpacityEditing(
+      activeToolByElement.text === 'opacity' ||
+        activeToolByElement.note === 'opacity' ||
+        activeToolByElement.icon === 'opacity' ||
+        activeToolByElement.counter === 'opacity',
+    )
+  }, [activeToolByElement])
 
   useEffect(() => {
     if (!settings?.overlayInteractive || !settings?.appEnabled || !isToolboxOpen) return
@@ -371,13 +769,15 @@ function OverlayPageComponent() {
       if (target.closest('[data-overlay-toolbox="true"]')) return
       if (target.closest('[data-overlay-hotspot="true"]')) return
       setIsToolboxOpen(false)
+      setActiveTool(null)
+      setIsOpacityEditing(false)
     }
 
     window.addEventListener('pointerdown', handlePointerDown, true)
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown, true)
     }
-  }, [isToolboxOpen, settings?.appEnabled, settings?.overlayInteractive])
+  }, [isToolboxOpen, setActiveTool, settings?.appEnabled, settings?.overlayInteractive])
 
   useEffect(() => {
     document.body.style.backgroundColor = 'transparent'
@@ -390,12 +790,30 @@ function OverlayPageComponent() {
 
   useEffect(() => {
     if (!settings) return
-    if (settings.overlayInteractive && settings.appEnabled) {
+    const shouldCaptureOverlay = settings.overlayInteractive && settings.appEnabled
+
+    if (shouldCaptureOverlay) {
       setOverlayPassThrough(false)
       return
     }
     setOverlayPassThrough(true)
-  }, [setOverlayPassThrough, settings?.appEnabled, settings?.overlayInteractive])
+  }, [
+    setOverlayPassThrough,
+    settings?.appEnabled,
+    settings?.overlayVisible,
+    settings?.overlayInteractive,
+  ])
+
+  useEffect(() => {
+    if (!settings?.appEnabled || !settings?.overlayVisible || settings?.overlayInteractive) return
+    const handleWindowBlur = () => {
+      setOverlayTextInteractionActive(false)
+    }
+    window.addEventListener('blur', handleWindowBlur)
+    return () => {
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [settings?.appEnabled, settings?.overlayInteractive, settings?.overlayVisible])
 
   const sendCurrent = useCallback(async () => {
     const current = settingsRef.current
@@ -469,6 +887,12 @@ function OverlayPageComponent() {
       const current = settingsRef.current
       const language = current?.uiLanguage ?? 'vi'
 
+      if (actionId === 'overlay.capture_probe') {
+        if (!current?.appEnabled || !current?.overlayVisible || current.overlayInteractive) return
+        setCaptureProbeToken((value) => value + 1)
+        return
+      }
+
       if (actionId === 'overlay.toggle_visibility') {
         if (current?.appEnabled === false) return
         const nextVisible = current ? !current.overlayVisible : true
@@ -512,8 +936,9 @@ function OverlayPageComponent() {
 
       if (actionId === 'app.toggle_enabled') {
         if (!current) return
-        if (appToggleInFlightRef.current) return
-        appToggleInFlightRef.current = true
+        const toggleNow = Date.now()
+        if (toggleNow < appToggleInFlightUntilRef.current) return
+        appToggleInFlightUntilRef.current = toggleNow + APP_TOGGLE_ACTION_LOCK_MS
         const nextEnabled = !current.appEnabled
         const nextPatch = nextEnabled
           ? {
@@ -552,10 +977,6 @@ function OverlayPageComponent() {
           const raw = error instanceof Error ? error.message : t(language, 'overlay.toggleFailed')
           reportHotkeyError('overlay-action', raw)
           showActionFeedback('error', localizeOverlayActionError(language, raw), ACTION_ERROR_FEEDBACK_MS)
-        } finally {
-          window.setTimeout(() => {
-            appToggleInFlightRef.current = false
-          }, 1100)
         }
         return
       }
@@ -564,7 +985,17 @@ function OverlayPageComponent() {
         if (current?.appEnabled === false) return
         const nextInteractive = current ? !current.overlayInteractive : false
         showActionFeedback('optimistic', t(language, 'overlay.toggleEditQueued'))
-        if (current) void updateSettings({ overlayInteractive: nextInteractive })
+        if (current) {
+          void updateSettings(
+            nextInteractive
+              ? {
+                  overlayInteractive: true,
+                  overlayToolsPanelVisible: true,
+                  overlayToolsActiveTab: 'image',
+                }
+              : { overlayInteractive: false },
+          )
+        }
 
         try {
           if (window.electronAPI?.toggleOverlayInteraction) {
@@ -577,7 +1008,13 @@ function OverlayPageComponent() {
             }),
           )
         } catch (error) {
-          if (current) void updateSettings({ overlayInteractive: current.overlayInteractive })
+          if (current) {
+            void updateSettings({
+              overlayInteractive: current.overlayInteractive,
+              overlayToolsPanelVisible: current.overlayToolsPanelVisible,
+              overlayToolsActiveTab: current.overlayToolsActiveTab,
+            })
+          }
           const raw = error instanceof Error ? error.message : t(language, 'overlay.toggleFailed')
           reportHotkeyError('overlay-action', raw)
           showActionFeedback('error', localizeOverlayActionError(language, raw), ACTION_ERROR_FEEDBACK_MS)
@@ -668,14 +1105,13 @@ function OverlayPageComponent() {
   }, [getLiveOffsets, queueDraftOffsets, selectedElement, settings?.appEnabled, settings?.overlayInteractive, settingsRef, updateSettings])
 
   useEffect(() => {
-    if (!sendHotkey || !appToggleHotkey || !overlayToggleHotkey || !mainToggleHotkey || !overlayEditHotkey) return
-
     const payload: PythonConfigurePayload = {
       text: activeItemText,
       hotkey: sendHotkey,
       press_enter: false,
+      block_alt_f4: settings?.blockAltF4WhenEnabled ?? false,
       app_enabled: appEnabled,
-      app_toggle_hotkey: appToggleHotkey,
+      app_toggle_hotkey: null,
       overlay_toggle_hotkey: overlayToggleHotkey,
       main_toggle_hotkey: mainToggleHotkey,
       overlay_edit_hotkey: overlayEditHotkey,
@@ -719,8 +1155,8 @@ function OverlayPageComponent() {
   }, [
     activeItemText,
     appEnabled,
-    appToggleHotkey,
     mainToggleHotkey,
+    settings?.blockAltF4WhenEnabled,
     overlayEditHotkey,
     overlayToggleHotkey,
     reportHotkeyError,
@@ -901,6 +1337,14 @@ function OverlayPageComponent() {
         window.cancelAnimationFrame(dragFrameRef.current)
         dragFrameRef.current = null
       }
+      if (editModeAnimationTimerRef.current !== null) {
+        window.clearTimeout(editModeAnimationTimerRef.current)
+        editModeAnimationTimerRef.current = null
+      }
+      for (const timerId of morphTimersRef.current) {
+        window.clearTimeout(timerId)
+      }
+      morphTimersRef.current = []
       pendingDragUiPatchRef.current = null
       flushStylePatch()
       flushIndexPatch()
@@ -1092,6 +1536,10 @@ function OverlayPageComponent() {
     (target: EditableElement, event: ReactPointerEvent<HTMLElement>) => {
       if (isOpacityEditing) return
       if (!settingsRef.current?.overlayInteractive) return
+      if (event.detail > 1) {
+        event.preventDefault()
+        return
+      }
       const container = overlayRef.current
       const current = settingsRef.current
       if (!container || !current) return
@@ -1269,12 +1717,12 @@ function OverlayPageComponent() {
   const currentItem = settings.items[activeIndex]
   const alignmentClass =
     settings.textAlign === 'left' ? 'text-left' : settings.textAlign === 'right' ? 'text-right' : 'text-center'
-  const rootPointerMode = isInteractive ? 'pointer-events-auto' : 'pointer-events-none'
-  const showOverlaySurface = settings.overlayElementsVisible && settings.overlayVisible
-  const showText = showOverlaySurface
-  const showNote = showOverlaySurface && !!currentItem?.note
-  const showIcon = showOverlaySurface && (settings.overlayShowIcon || (isInteractive && !isOpacityEditing))
-  const showCounter = showOverlaySurface && (settings.overlayShowCounter || (isInteractive && !isOpacityEditing))
+  const rootPointerMode = 'pointer-events-auto'
+  const showOverlaySurface = settings.overlayVisible
+  const showText = showOverlaySurface && (settings.overlayElementsVisible || isInteractive)
+  const showIcon = showOverlaySurface && (settings.overlayShowIcon || isInteractive)
+  const showContextHud = false  
+  const showImageCard = false
   const offsets = draftOffsets ?? {
     textX: settings.textOffsetXPercent,
     textY: settings.textOffsetYPercent,
@@ -1285,41 +1733,40 @@ function OverlayPageComponent() {
     counterX: settings.counterOffsetXPercent,
     counterY: settings.counterOffsetYPercent,
   }
+  const imageCardOffset = imageCardDraftOffset ?? {
+    x: settings.overlayImageCardOffsetXPercent,
+    y: settings.overlayImageCardOffsetYPercent,
+  }
 
   const runtimeOpacity = styleDraft.opacity
-  const runtimeNoteOpacity = styleDraft.noteOpacity
+  const runtimeIconOpacity = styleDraft.iconOpacity
   const effectiveOpacity = isInteractive && !isOpacityEditing ? 1 : runtimeOpacity
-  const effectiveNoteOpacity = isInteractive && !isOpacityEditing ? 1 : runtimeNoteOpacity
+  const effectiveIconOpacity =
+    isInteractive && !settings.overlayShowIcon ? Math.max(0.3, Math.min(0.45, runtimeIconOpacity)) : runtimeIconOpacity
+  const effectiveTextContainerOpacity = isInteractive && !settings.overlayElementsVisible ? 0.58 : 1
+  const effectiveHudOpacity = settings.overlayHudContextOpacity
   const effectiveFontSize = styleDraft.fontSize
-  const effectiveNoteSize = styleDraft.noteSize
   const effectiveTextColor = styleDraft.textColor
-  const effectiveNoteColor = styleDraft.noteColor
 
-  const activeElement: EditableElement =
-    selectedElement === 'note' && !currentItem?.note ? 'text' : selectedElement
+  const activeElement: EditableElement = activeToolboxElement
   const activeElementLabel = getElementLabel(settings.uiLanguage, activeElement)
-  const activeSupportsTextStyle = activeElement === 'text' || activeElement === 'note'
-  const activeSupportsOpacity = activeElement === 'text' || activeElement === 'note'
-  const activeSupportsAlign = activeElement === 'text' || activeElement === 'note'
-  const activeVisibilityValue = activeElement === 'icon' ? settings.overlayShowIcon : activeElement === 'counter' ? settings.overlayShowCounter : true
+  const editableTargets: EditableElement[] = ['icon']
   const textHovered = hoveredElement === 'text'
-  const noteHovered = hoveredElement === 'note'
   const iconHovered = hoveredElement === 'icon'
-  const counterHovered = hoveredElement === 'counter'
   const textScale = dragTarget === 'text' || textHovered || (isInteractive && activeElement === 'text') ? 1.02 : 1
-  const noteScale = dragTarget === 'note' || noteHovered || (isInteractive && activeElement === 'note') ? 1.02 : 1
   const iconScale = dragTarget === 'icon' || iconHovered || (isInteractive && activeElement === 'icon') ? 1.03 : 1
-  const counterScale =
-    dragTarget === 'counter' || counterHovered || (isInteractive && activeElement === 'counter') ? 1.03 : 1
   const iconWillChange = dragTarget === 'icon' || iconHovered
-  const counterWillChange = dragTarget === 'counter' || counterHovered
   const textWillChange = dragTarget === 'text' || textHovered
-  const noteWillChange = dragTarget === 'note' || noteHovered
-  const toolboxStyle = toToolboxStyle()
-
+  const editModeAnimationClass =
+    editModeTransitionPhase === 'enter' ? 'qt-edit-enter' : editModeTransitionPhase === 'exit' ? 'qt-edit-exit' : ''
+  const currentDisplayText = currentItem?.text?.trim() || t(settings.uiLanguage, 'overlay.hudEmpty')
+  const currentDisplayNote = currentItem?.note?.trim() || ''
+  const hudTextSize = Math.max(16, effectiveFontSize)
+  const hudNoteSize = Math.max(11, Math.round(hudTextSize * 0.54))
   const stopInteractive = async () => {
     setIsOpacityEditing(false)
     setIsToolboxOpen(false)
+    setActiveToolByElement((current) => (hasAnyActiveTool(current) ? createDefaultActiveToolByElement() : current))
     if (window.electronAPI?.setOverlayInteraction) {
       await window.electronAPI.setOverlayInteraction(false)
       return
@@ -1327,9 +1774,88 @@ function OverlayPageComponent() {
     await updateSettings({ overlayInteractive: false })
   }
 
-  const resetActivePosition = async () => {
-    await resetElementPosition(activeElement)
+  const setHotspotRef = (target: EditableElement) => (node: HTMLElement | null) => {
+    hotspotRefs.current[target] = node
   }
+
+  const activateOverlayElement = (target: EditableElement) => {
+    setSelectedElement(target)
+    setIsToolboxOpen(true)
+  }
+
+  const toggleActiveVisibility = async (target: EditableElement) => {
+    if (target === 'icon') {
+      await updateSettings({ overlayShowIcon: !settings.overlayShowIcon })
+      return
+    }
+    await updateSettings({ overlayElementsVisible: !settings.overlayElementsVisible })
+  }
+
+  const startImageCardDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isInteractive) return
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const container = overlayRef.current
+    if (!container) return
+    const containerRect = container.getBoundingClientRect()
+    if (containerRect.width <= 0 || containerRect.height <= 0) return
+
+    const origin = imageCardDraftOffset ?? {
+      x: settings.overlayImageCardOffsetXPercent,
+      y: settings.overlayImageCardOffsetYPercent,
+    }
+    let latest = origin
+    imageCardDragRef.current = {
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: origin.x,
+      originY: origin.y,
+    }
+    setImageCardDraftOffset(origin)
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const drag = imageCardDragRef.current
+      if (!drag) return
+      const deltaX = moveEvent.clientX - drag.startClientX
+      const deltaY = moveEvent.clientY - drag.startClientY
+      latest = {
+        x: clampNumber(drag.originX + (deltaX / containerRect.width) * 100, MIN_OFFSET_X_PERCENT, MAX_OFFSET_X_PERCENT),
+        y: clampNumber(drag.originY + (deltaY / containerRect.height) * 100, MIN_OFFSET_Y_PERCENT, MAX_OFFSET_Y_PERCENT),
+      }
+      setImageCardDraftOffset((current) => {
+        if (current && current.x === latest.x && current.y === latest.y) return current
+        return latest
+      })
+    }
+
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleUp)
+      imageCardDragRef.current = null
+      setImageCardDraftOffset(null)
+      void updateSettings({
+        overlayImageCardOffsetXPercent: latest.x,
+        overlayImageCardOffsetYPercent: latest.y,
+      })
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleUp)
+  }
+
+  const imageCardStyle = withWillChange(
+    {
+      ...toOffsetStyle(imageCardOffset.x, imageCardOffset.y, isInteractive ? 1.02 : 1),
+      width: `${IMAGE_CARD_WIDTH_PX}px`,
+      minHeight: `${IMAGE_CARD_HEIGHT_PX}px`,
+      opacity: isInteractive ? Math.min(0.9, effectiveHudOpacity * 0.86) : effectiveHudOpacity,
+    },
+    showImageCard || isInteractive,
+  )
 
   return (
     <div
@@ -1338,389 +1864,324 @@ function OverlayPageComponent() {
     >
       {showIcon ? (
         <div
+          ref={setHotspotRef('icon')}
           data-overlay-hotspot="true"
           data-overlay-element="icon"
-          style={withWillChange(toOffsetStyle(offsets.iconX, offsets.iconY, iconScale), iconWillChange)}
+          style={withWillChange(
+            {
+              ...toOffsetStyle(offsets.iconX, offsets.iconY, iconScale),
+              opacity: effectiveIconOpacity,
+            },
+            iconWillChange,
+          )}
           onPointerDown={(event) => startDrag('icon', event)}
           onPointerEnter={() => setHoveredElement('icon')}
           onPointerLeave={() => setHoveredElement((current) => (current === 'icon' ? null : current))}
-          onDoubleClick={() => void resetElementPosition('icon')}
           onClick={() => {
             if (!isInteractive) return
-            setSelectedElement('icon')
-            setIsToolboxOpen(true)
+            activateOverlayElement('icon')
           }}
           className={`absolute z-30 h-14 w-14 overflow-hidden rounded-lg touch-none border qt-motion qt-motion-fast qt-motion-emphasis ${
             isInteractive
               ? dragTarget === 'icon'
-                ? 'cursor-grabbing border-[var(--qt-primary)] bg-[var(--qt-surface)]/95 ring-2 ring-[var(--qt-primary)]/80'
+                ? 'cursor-grabbing qt-overlay-hud-shell qt-overlay-hud-shell-active'
                 : activeElement === 'icon'
-                  ? 'cursor-move border-[var(--qt-primary)] bg-[var(--qt-surface)]/90 ring-2 ring-[var(--qt-primary)]/65'
-                  : 'cursor-move border-white/35 bg-[var(--qt-surface)]/80'
+                  ? 'cursor-move qt-overlay-hud-shell qt-overlay-hud-shell-active'
+                  : 'cursor-move qt-overlay-hud-shell'
               : iconHovered
-                ? 'cursor-pointer border-[var(--qt-primary)]/70 bg-[var(--qt-surface)]/90'
-                : 'cursor-default border-[var(--qt-border)] bg-[var(--qt-surface)]/78'
-          } ${settings.overlayShowIcon ? 'opacity-95' : 'opacity-65 border-dashed'}`}
+                ? 'cursor-pointer qt-overlay-hud-shell qt-overlay-hud-shell-hover'
+                : 'cursor-default border-transparent bg-transparent'
+          } ${isInteractive && !settings.overlayShowIcon ? 'border-dashed' : ''}`}
         >
           <Image src="/icon.png" alt={t(settings.uiLanguage, 'overlay.logoAlt')} fill sizes="56px" className="rounded-lg object-cover" />
         </div>
       ) : null}
 
-      {showCounter ? (
-        <p
-          data-overlay-hotspot="true"
-          data-overlay-element="counter"
-          style={withWillChange(toOffsetStyle(offsets.counterX, offsets.counterY, counterScale), counterWillChange)}
-          onPointerDown={(event) => startDrag('counter', event)}
-          onPointerEnter={() => setHoveredElement('counter')}
-          onPointerLeave={() => setHoveredElement((current) => (current === 'counter' ? null : current))}
-          onDoubleClick={() => void resetElementPosition('counter')}
-          onClick={() => {
-            if (!isInteractive) return
-            setSelectedElement('counter')
-            setIsToolboxOpen(true)
-          }}
-          className={`absolute z-30 inline-flex rounded-md border px-2 py-0.5 text-sm tracking-wide touch-none qt-motion qt-motion-fast qt-motion-emphasis ${
-            isInteractive
-              ? dragTarget === 'counter'
-                ? 'cursor-grabbing border-[var(--qt-primary)] bg-[var(--qt-chip-bg)] ring-2 ring-[var(--qt-primary)]/75 text-[var(--qt-chip-text)]'
-                : activeElement === 'counter'
-                  ? 'cursor-move border-[var(--qt-primary)] bg-[var(--qt-chip-bg)] ring-2 ring-[var(--qt-primary)]/55 text-[var(--qt-chip-text)]'
-                  : 'cursor-move border-[var(--qt-chip-border)] bg-[var(--qt-chip-bg)] text-[var(--qt-chip-text)]'
-              : counterHovered
-                ? 'cursor-pointer border-[var(--qt-primary)]/70 bg-[var(--qt-chip-bg)] text-[var(--qt-chip-text)]'
-                : 'cursor-default border-[var(--qt-chip-border)] bg-[var(--qt-chip-bg)] text-[var(--qt-chip-text)]'
-          } ${settings.overlayShowCounter ? 'opacity-100' : 'opacity-70 border-dashed'}`}
-        >
-          {t(settings.uiLanguage, 'overlay.counterLabel', {
-            current: activeIndex + 1,
-            total: settings.items.length,
-          })}
-        </p>
-      ) : null}
-
-      {showText ? (
+      {showContextHud ? (
         <div
+          ref={(node) => {
+            textHudRef.current = node
+            setHotspotRef('text')(node)
+          }}
           data-overlay-hotspot="true"
           data-overlay-element="text"
-          style={withWillChange(toOffsetStyle(offsets.textX, offsets.textY, textScale, settings.textAlign), textWillChange)}
+          style={withWillChange(
+            {
+              ...toOffsetStyle(offsets.textX, offsets.textY, textScale, settings.textAlign),
+              opacity: effectiveTextContainerOpacity * effectiveHudOpacity,
+            },
+            textWillChange,
+          )}
           onPointerDown={(event) => startDrag('text', event)}
           onPointerEnter={() => setHoveredElement('text')}
           onPointerLeave={() => setHoveredElement((current) => (current === 'text' ? null : current))}
-          onDoubleClick={() => void resetElementPosition('text')}
           onClick={() => {
             if (!isInteractive) return
-            setSelectedElement('text')
-            setIsToolboxOpen(true)
+            activateOverlayElement('text')
           }}
-          className={`absolute z-20 max-w-[96%] rounded-xl px-3 py-2 touch-none qt-motion qt-motion-fast qt-motion-emphasis ${alignmentClass} ${
+          className={`absolute z-20 max-w-[96%] rounded-xl px-3 py-2 touch-none qt-motion qt-motion-fast qt-motion-emphasis qt-overlay-single ${alignmentClass} ${editModeAnimationClass} ${
             isInteractive
               ? dragTarget === 'text'
-                ? 'cursor-grabbing border border-[var(--qt-primary)] bg-black/30 ring-2 ring-[var(--qt-primary)]/80'
+                ? 'cursor-grabbing qt-overlay-hud-shell qt-overlay-hud-shell-active'
                 : activeElement === 'text'
-                  ? 'cursor-move border border-[var(--qt-primary)] bg-black/24 ring-2 ring-[var(--qt-primary)]/60'
-                  : 'cursor-move border border-white/35 bg-black/16 hover:border-[var(--qt-primary)]/80'
+                  ? 'cursor-move qt-overlay-hud-shell qt-overlay-hud-shell-active'
+                  : 'cursor-move qt-overlay-hud-shell'
               : textHovered
-                ? 'cursor-text border border-[var(--qt-primary)]/50 bg-black/12 shadow-[0_0_10px_rgba(64,217,255,0.18)]'
+                ? 'cursor-text qt-overlay-hud-shell qt-overlay-hud-shell-hover'
                 : 'cursor-default border border-transparent bg-transparent'
-          }`}
+          } ${isInteractive && !settings.overlayElementsVisible ? 'border-dashed' : ''}`}
         >
-          <p
-            key={`text-${activeIndex}`}
-            className="qt-overlay-fade-in break-words whitespace-pre-wrap font-extrabold leading-tight tracking-wide"
-            style={{
-              fontSize: `${effectiveFontSize}px`,
-              color: withOpacity(effectiveTextColor, effectiveOpacity),
-              textShadow: '0 0 12px rgba(0,0,0,0.96), 0 0 26px rgba(0,0,0,0.82)',
-            }}
-          >
-            {currentItem?.text || ''}
-          </p>
+          <div className="space-y-1.5">
+            <p
+              className="break-words whitespace-pre-wrap leading-tight qt-overlay-main-line"
+              style={{
+                fontSize: `${hudTextSize}px`,
+                fontWeight: 800,
+                color: withOpacity(effectiveTextColor, effectiveOpacity),
+                textShadow: '0 0 10px rgba(0,0,0,0.92), 0 0 18px rgba(0,0,0,0.7)',
+              }}
+            >
+              {currentDisplayText}
+            </p>
+            {currentDisplayNote ? (
+              <p
+                className="break-words whitespace-pre-wrap leading-snug qt-overlay-note-line"
+                style={{
+                  fontSize: `${hudNoteSize}px`,
+                  fontWeight: 600,
+                  color: withOpacity(effectiveTextColor, effectiveOpacity * 0.86),
+                  textShadow: '0 0 8px rgba(0,0,0,0.84)',
+                }}
+              >
+                {currentDisplayNote}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
-      {showNote && currentItem?.note ? (
+      {showImageCard ? (
         <div
+          ref={imageCardRef}
           data-overlay-hotspot="true"
-          data-overlay-element="note"
-          style={withWillChange(toOffsetStyle(offsets.noteX, offsets.noteY, noteScale, settings.textAlign), noteWillChange)}
-          onPointerDown={(event) => startDrag('note', event)}
-          onPointerEnter={() => setHoveredElement('note')}
-          onPointerLeave={() => setHoveredElement((current) => (current === 'note' ? null : current))}
-          onDoubleClick={() => void resetElementPosition('note')}
-          onClick={() => {
-            if (!isInteractive) return
-            setSelectedElement('note')
-            setIsToolboxOpen(true)
-          }}
-          className={`absolute z-20 max-w-[96%] rounded-xl px-3 py-2 touch-none qt-motion qt-motion-fast qt-motion-emphasis ${alignmentClass} ${
+          data-overlay-element="image-card"
+          style={imageCardStyle}
+          onPointerDown={startImageCardDrag}
+          className={`absolute z-[26] overflow-hidden rounded-xl border qt-motion qt-motion-fast qt-motion-emphasis qt-overlay-image-card-shell ${
             isInteractive
-              ? dragTarget === 'note'
-                ? 'cursor-grabbing border border-[var(--qt-accent)] bg-black/30 ring-2 ring-[var(--qt-accent)]/80'
-                : activeElement === 'note'
-                  ? 'cursor-move border border-[var(--qt-accent)] bg-black/24 ring-2 ring-[var(--qt-accent)]/60'
-                  : 'cursor-move border border-white/35 bg-black/16 hover:border-[var(--qt-accent)]/80'
-              : noteHovered
-                ? 'cursor-text border border-[var(--qt-accent)]/50 bg-black/12 shadow-[0_0_10px_rgba(255,77,149,0.18)]'
-                : 'cursor-default border border-transparent bg-transparent'
+              ? 'cursor-move qt-overlay-image-card-shell-edit'
+              : 'pointer-events-none'
           }`}
         >
-          <p
-            key={`note-${activeIndex}`}
-            className="qt-overlay-fade-in break-words whitespace-pre-wrap font-semibold leading-snug"
-            style={{
-              fontSize: `${effectiveNoteSize}px`,
-              color: withOpacity(effectiveNoteColor, effectiveNoteOpacity),
-              textShadow: '0 0 10px rgba(0,0,0,0.92), 0 0 20px rgba(0,0,0,0.75)',
-            }}
-          >
-            {currentItem.note}
-          </p>
+          <div className="qt-overlay-image-card-media relative h-[76px] w-full overflow-hidden">
+            <Image src={imageCardState.previewDataUrl} alt={imageCardState.imageName || 'image-preview'} fill sizes="248px" className="object-cover" />
+          </div>
+          <div className="px-2 py-1.5">
+            <p className="truncate text-[11px] font-semibold text-[var(--qt-fg)]">{imageCardState.imageName || t(settings.uiLanguage, 'overlayImage.windowTitle')}</p>
+            <p className="truncate text-[10px] text-[var(--qt-muted)]">
+              {imageCardState.isSearching
+                ? t(settings.uiLanguage, 'overlayImage.searching')
+                : imageCardState.lensError
+                  ? imageCardState.lensError
+                  : imageCardState.resultsCount > 0
+                    ? `${imageCardState.resultsCount} ${t(settings.uiLanguage, 'overlayImage.searchResults')}`
+                    : t(settings.uiLanguage, 'overlayImage.searchNoResult')}
+            </p>
+          </div>
         </div>
       ) : null}
+
+      {morphGhosts.length > 0 ? (
+        <div className="pointer-events-none absolute inset-0 z-[74]">
+          {morphGhosts.map((ghost) => (
+            <div key={`morph-${ghost.id}`} style={buildMorphGhostStyle(ghost, ghost.running)}>
+              {ghost.target === 'text' ? (
+                <div className="qt-overlay-surface h-full w-full px-3 py-2">
+                  <p className="truncate text-sm font-semibold text-[var(--qt-fg)]">{ghost.text?.title || t(settings.uiLanguage, 'overlay.hudEmpty')}</p>
+                  {ghost.text?.note ? <p className="mt-1 line-clamp-2 text-xs text-[var(--qt-muted)]">{ghost.text.note}</p> : null}
+                </div>
+              ) : (
+                <div className="qt-overlay-preview-frame h-full w-full">
+                  {ghost.image?.previewDataUrl ? (
+                    <div className="relative h-full w-full">
+                      <Image src={ghost.image.previewDataUrl} alt={ghost.image.imageName || 'morph-image'} fill sizes="360px" className="object-cover" />
+                    </div>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-[var(--qt-muted)]">
+                      {t(settings.uiLanguage, 'overlayImage.searching')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <OverlayUnifiedToolsPanel
+        settings={settings}
+        updateSettings={updateSettings}
+        displayMode="overlay"
+        onOverlayTextInteractionChange={setOverlayTextInteractionActive}
+        captureProbeToken={captureProbeToken}
+        onWindowRectChange={handleWindowRectChange}
+        onImageCardStateChange={handleImageCardStateChange}
+        hiddenByMorph={hiddenByMorphTargets}
+        playText={currentDisplayText}
+        playNote={currentDisplayNote}
+        playTextColor={effectiveTextColor}
+        playTextOpacity={effectiveOpacity * effectiveHudOpacity}
+        playTextSize={hudTextSize}
+        playNoteSize={hudNoteSize}
+        playTextAlign={settings.textAlign}
+      />
 
       {isInteractive ? (
         <>
-          <div data-overlay-toolbox="true" className="absolute right-4 top-4 z-40 flex items-center gap-2">
-            <div className="rounded-md border border-[var(--qt-border)] bg-[var(--qt-surface)]/95 px-3 py-1.5 text-xs text-[var(--qt-fg)] qt-elev-soft">
-              {t(settings.uiLanguage, 'overlay.editModeActive')}
+          <div data-overlay-toolbox="true" className={`absolute right-4 top-4 z-40 flex items-center gap-2 ${editModeAnimationClass}`}>
+            <div className="qt-overlay-edit-chip">
+              <p className="text-xs font-semibold tracking-wide text-[var(--qt-fg)]">
+                {t(settings.uiLanguage, 'overlay.editModeActive')}
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--qt-muted)]">{activeElementLabel}</p>
+            </div>
+            <div className="relative">
+              <button
+                data-overlay-toolbox="true"
+                onClick={() => setIsHudOpacityOpen((current) => !current)}
+                className="qt-overlay-edit-btn"
+                aria-label={t(settings.uiLanguage, 'overlay.hudOpacity')}
+                title={t(settings.uiLanguage, 'overlay.hudOpacityHint')}
+              >
+                <Palette className="size-3.5" />
+                {t(settings.uiLanguage, 'overlay.hudOpacity')}
+              </button>
+              {isHudOpacityOpen ? (
+                <div data-overlay-toolbox="true" className="qt-overlay-popover absolute right-0 top-10 z-50 w-44 p-2">
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={1}
+                    step={0.05}
+                    value={settings.overlayHudContextOpacity}
+                    onChange={(event) => {
+                      const value = Number(event.currentTarget.value)
+                      if (!Number.isFinite(value)) return
+                      void updateSettings({ overlayHudContextOpacity: value })
+                    }}
+                    className="w-full accent-[var(--qt-primary)]"
+                  />
+                </div>
+              ) : null}
             </div>
             <button
               data-overlay-toolbox="true"
+              onClick={() => void updateSettings({ overlayToolsPanelVisible: !settings.overlayToolsPanelVisible })}
+              className={`qt-overlay-edit-btn ${
+                settings.overlayToolsPanelVisible
+                  ? 'qt-overlay-edit-btn-active'
+                  : ''
+              }`}
+              aria-label={t(settings.uiLanguage, 'settings.overlayTools')}
+              title={t(settings.uiLanguage, 'settings.overlayTools')}
+            >
+              <SlidersHorizontal className="size-3.5" />
+              {settings.overlayToolsPanelVisible ? t(settings.uiLanguage, 'main.enabled') : t(settings.uiLanguage, 'main.disabled')}
+            </button>
+            <button
+              data-overlay-toolbox="true"
               onClick={() => void stopInteractive()}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--qt-accent)] bg-[var(--qt-accent)] text-sm font-bold text-[var(--qt-on-accent)] qt-elev-soft qt-motion qt-motion-fast qt-motion-emphasis hover:scale-105"
+              className="qt-overlay-edit-btn qt-overlay-edit-btn-danger qt-motion qt-motion-fast qt-motion-emphasis hover:scale-105"
               aria-label={t(settings.uiLanguage, 'overlay.exitEdit')}
               title={t(settings.uiLanguage, 'overlay.exitEdit')}
             >
-              X
+              <X className="size-4" />
             </button>
           </div>
 
-          {isToolboxOpen ? (
-            <div
-              ref={toolboxRef}
-              data-overlay-toolbox="true"
-              style={toolboxStyle}
-              className="pointer-events-auto absolute z-50 w-[320px] max-w-[95vw] max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-xl border border-white/20 bg-black/70 p-3 qt-elev-medium qt-blur-soft qt-overlay-fade-in"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-[var(--qt-fg)]">
-                  {t(settings.uiLanguage, 'overlay.editorTitle')} - {activeElementLabel}
-                </p>
-                <button
-                  onClick={() => setIsToolboxOpen(false)}
-                  className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs text-[var(--qt-fg)] hover:bg-white/15"
-                  title={t(settings.uiLanguage, 'overlay.exitEdit')}
-                >
-                  x
-                </button>
-              </div>
+          {(editableTargets as EditableElement[]).map((target) => {
+            const isTargetVisible = target === 'text' ? settings.overlayToolsShowTextManager || showContextHud : showIcon
+            const isTargetPanelOpen = isTargetVisible && isToolboxOpen && activeElement === target
+            if (!isTargetPanelOpen) return null
 
-              {isOpacityEditing ? (
-                <div className="mt-3 space-y-3">
-                  {activeSupportsOpacity ? (
-                    <OverlaySlider
-                      label={t(settings.uiLanguage, 'overlay.opacity')}
-                      value={activeElement === 'text' ? runtimeOpacity : runtimeNoteOpacity}
-                      min={0.2}
-                      max={1}
-                      step={0.05}
-                      onChange={(value) => {
-                        if (activeElement === 'text') {
-                          setStyleDraft((current) => (current ? { ...current, opacity: value } : current))
-                          queueStylePatch({ opacity: value })
-                          return
-                        }
-                        setStyleDraft((current) => (current ? { ...current, noteOpacity: value } : current))
-                        queueStylePatch({ noteOpacity: value })
-                      }}
-                    />
-                  ) : null}
+            const targetActiveTool = activeToolByElement[target] ?? null
+            const targetLabel = getElementLabel(settings.uiLanguage, target)
+            const targetVisible = target === 'icon' ? settings.overlayShowIcon : settings.overlayElementsVisible
+            const targetOpacity = target === 'text' ? runtimeOpacity : runtimeIconOpacity
+            const targetSupportsTextStyle = target === 'text'
 
-                  <button
-                    onClick={() => setIsOpacityEditing(false)}
-                    className="w-full rounded-md border border-[var(--qt-primary)] bg-[var(--qt-primary)] py-1.5 text-xs font-semibold text-[var(--qt-on-primary)]"
-                  >
-                    {t(settings.uiLanguage, 'overlay.opacityDone')}
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="mt-2 grid grid-cols-4 gap-1.5">
-                    <button
-                      onClick={() => {
-                        setSelectedElement('text')
-                        setIsOpacityEditing(false)
-                      }}
-                      className={`rounded-md border py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                        activeElement === 'text'
-                          ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
-                          : 'border-white/20 bg-white/10 text-[var(--qt-fg)]'
-                      }`}
-                    >
-                      {t(settings.uiLanguage, 'overlay.elementText')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedElement('note')
-                        setIsOpacityEditing(false)
-                      }}
-                      disabled={!currentItem?.note}
-                      className={`rounded-md border py-1 text-[11px] font-semibold uppercase tracking-wide disabled:opacity-40 ${
-                        activeElement === 'note'
-                          ? 'border-[var(--qt-accent)] bg-[var(--qt-accent)] text-[var(--qt-on-accent)]'
-                          : 'border-white/20 bg-white/10 text-[var(--qt-fg)]'
-                      }`}
-                    >
-                      {t(settings.uiLanguage, 'overlay.elementNote')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedElement('icon')
-                        setIsOpacityEditing(false)
-                      }}
-                      className={`rounded-md border py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                        activeElement === 'icon'
-                          ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
-                          : 'border-white/20 bg-white/10 text-[var(--qt-fg)]'
-                      }`}
-                    >
-                      {t(settings.uiLanguage, 'overlay.elementIcon')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedElement('counter')
-                        setIsOpacityEditing(false)
-                      }}
-                      className={`rounded-md border py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                        activeElement === 'counter'
-                          ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
-                          : 'border-white/20 bg-white/10 text-[var(--qt-fg)]'
-                      }`}
-                    >
-                      {t(settings.uiLanguage, 'overlay.elementCounter')}
-                    </button>
-                  </div>
-
-                  <div className="mt-2 space-y-2">
-                    {activeSupportsOpacity ? (
-                      <button
-                        onClick={() => setIsOpacityEditing(true)}
-                        className="w-full rounded-md border border-[var(--qt-primary)]/60 bg-[var(--qt-primary)]/20 py-1.5 text-xs font-semibold text-[var(--qt-fg)] hover:bg-[var(--qt-primary)]/30"
-                      >
-                        {t(settings.uiLanguage, 'overlay.opacityAdjust')}
-                      </button>
-                    ) : null}
-
-                    {activeSupportsTextStyle ? (
-                      <OverlaySlider
-                        label={t(settings.uiLanguage, 'overlay.size')}
-                        value={activeElement === 'text' ? effectiveFontSize : effectiveNoteSize}
-                        min={activeElement === 'text' ? 24 : 12}
-                        max={activeElement === 'text' ? 120 : 72}
-                        step={1}
-                        onChange={(value) => {
-                          if (activeElement === 'text') {
-                            setStyleDraft((current) => (current ? { ...current, fontSize: value } : current))
-                            queueStylePatch({ fontSize: value })
-                            return
-                          }
-                          setStyleDraft((current) => (current ? { ...current, noteSize: value } : current))
-                          queueStylePatch({ noteSize: value })
-                        }}
-                      />
-                    ) : null}
-
-                    {activeSupportsTextStyle ? (
-                      <label className="flex items-center justify-between gap-2 text-xs text-[var(--qt-muted)]">
-                        <span>{t(settings.uiLanguage, 'overlay.color')}</span>
-                        <input
-                          type="color"
-                          value={activeElement === 'text' ? effectiveTextColor : effectiveNoteColor}
-                          onChange={(event) => {
-                            const parsed = normalizeColorInput(event.target.value)
-                            if (!parsed) return
-                            if (activeElement === 'text') {
-                              setStyleDraft((current) => (current ? { ...current, textColor: parsed } : current))
-                              queueStylePatch({ textColor: parsed })
-                              return
-                            }
-                            setStyleDraft((current) => (current ? { ...current, noteColor: parsed } : current))
-                            queueStylePatch({ noteColor: parsed })
-                          }}
-                          className="h-8 w-12 cursor-pointer rounded border border-white/20 bg-white/10 p-0.5"
-                        />
-                      </label>
-                    ) : null}
-                  </div>
-
-                  {activeSupportsAlign ? (
-                    <div className="mt-2">
-                      <p className="mb-1 text-xs text-[var(--qt-muted)]">{t(settings.uiLanguage, 'overlay.align')}</p>
-                      <div className="grid grid-cols-3 gap-1">
-                        {(['left', 'center', 'right'] as const).map((align) => (
-                          <button
-                            key={align}
-                            onClick={() => void updateSettings({ textAlign: align })}
-                            className={`rounded-md border py-1 text-[11px] uppercase tracking-wide ${
-                              settings.textAlign === align
-                                ? 'border-[var(--qt-primary)] bg-[var(--qt-primary)] text-[var(--qt-on-primary)]'
-                                : 'border-white/20 bg-white/10 text-[var(--qt-fg)]'
-                            }`}
-                          >
-                            {align}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {activeElement === 'icon' || activeElement === 'counter' ? (
-                    <button
-                      onClick={() => {
-                        if (activeElement === 'icon') {
-                          void updateSettings({ overlayShowIcon: !settings.overlayShowIcon })
-                          return
-                        }
-                        void updateSettings({ overlayShowCounter: !settings.overlayShowCounter })
-                      }}
-                      className="mt-2 w-full rounded-md border border-white/20 bg-white/10 py-1.5 text-xs font-semibold text-[var(--qt-fg)] hover:bg-white/15"
-                    >
-                      {activeElement === 'icon' ? t(settings.uiLanguage, 'main.overlayShowIcon') : t(settings.uiLanguage, 'main.overlayShowCounter')} ·{' '}
-                      {activeVisibilityValue ? t(settings.uiLanguage, 'main.enabled') : t(settings.uiLanguage, 'main.disabled')}
-                    </button>
-                  ) : null}
-
-                  <button
-                    onClick={() => void resetActivePosition()}
-                    className="mt-2 w-full rounded-md border border-white/20 bg-white/10 py-1.5 text-xs font-semibold text-[var(--qt-fg)] hover:bg-white/15"
-                  >
-                    {t(settings.uiLanguage, 'overlay.resetPosition')}
-                  </button>
-                </>
-              )}
-            </div>
-          ) : null}
+            return (
+              <OverlayElementToolbox
+                key={`overlay-toolbox-${target}`}
+                language={settings.uiLanguage}
+                anchorEl={hotspotRefs.current[target]}
+                target={target}
+                label={targetLabel}
+                activeTool={targetActiveTool}
+                visibilityEnabled={targetVisible}
+                opacityValue={targetOpacity}
+                supportsTextStyle={targetSupportsTextStyle}
+                colorValue={effectiveTextColor}
+                sizeValue={effectiveFontSize}
+                onActivateTarget={() => activateOverlayElement(target)}
+                onSetTool={(tool) => {
+                  setSelectedElement(target)
+                  setIsToolboxOpen(true)
+                  setToolForElement(target, tool)
+                }}
+                onCloseTool={() => {
+                  setToolForElement(target, null)
+                }}
+                onDismissPanel={() => {
+                  setToolForElement(target, null)
+                  if (activeElement === target) {
+                    setIsToolboxOpen(false)
+                  }
+                }}
+                onToggleVisibility={() => void toggleActiveVisibility(target)}
+                onOpacityChange={(value) => {
+                  if (target === 'text') {
+                    setStyleDraft((current) => (current ? { ...current, opacity: value } : current))
+                    queueStylePatch({ opacity: value })
+                    return
+                  }
+                  setStyleDraft((current) => (current ? { ...current, iconOpacity: value } : current))
+                  queueStylePatch({ iconOpacity: value })
+                }}
+                onColorChange={(value) => {
+                  if (!targetSupportsTextStyle) return
+                  setStyleDraft((current) => (current ? { ...current, textColor: value } : current))
+                  queueStylePatch({ textColor: value })
+                }}
+                onSizeChange={(value) => {
+                  if (!targetSupportsTextStyle) return
+                  setStyleDraft((current) => (current ? { ...current, fontSize: value } : current))
+                  queueStylePatch({ fontSize: value })
+                }}
+                onResetPosition={() => void resetElementPosition(target)}
+              />
+            )
+          })}
         </>
       ) : null}
 
       {sendFeedbackState !== 'idle' ? (
         <div className="absolute bottom-4 left-4 z-30 max-w-[60%] qt-overlay-fade-in">
-          <div className="rounded-lg border border-[var(--qt-border)]/70 bg-black/45 px-3 py-2 qt-elev-soft qt-motion qt-motion-fast">
+          <div className="qt-overlay-float-surface px-3 py-2 qt-motion qt-motion-fast">
             {sendFeedbackState === 'optimistic' || isSending ? (
               <div>
                 <p className="text-[11px] tracking-wide text-[var(--qt-muted)]">{t(settings.uiLanguage, 'overlay.sendQueued')}</p>
                 <div className="mt-1.5 space-y-1">
-                  <div className="h-1.5 w-28 rounded-full bg-white/20 animate-pulse" />
-                  <div className="h-1.5 w-20 rounded-full bg-white/15 animate-pulse" />
+                  <div className="qt-overlay-pulse-track w-28 animate-pulse" />
+                  <div className="qt-overlay-pulse-track-soft w-20 animate-pulse" />
                 </div>
               </div>
             ) : null}
             {sendFeedbackState === 'success' && !isSending ? (
-              <p className="text-xs tracking-wide text-emerald-300/95">{t(settings.uiLanguage, 'overlay.sendSuccess')}</p>
+              <p className="qt-overlay-text-success text-xs tracking-wide">{t(settings.uiLanguage, 'overlay.sendSuccess')}</p>
             ) : null}
             {sendFeedbackState === 'error' && !isSending ? (
-              <p className="text-xs tracking-wide text-red-300/95">{sendError || t(settings.uiLanguage, 'overlay.sendFailed')}</p>
+              <p className="qt-overlay-text-error text-xs tracking-wide">{sendError || t(settings.uiLanguage, 'overlay.sendFailed')}</p>
             ) : null}
           </div>
         </div>
@@ -1729,23 +2190,23 @@ function OverlayPageComponent() {
       {actionFeedback.state !== 'idle' ? (
         <div className="absolute bottom-4 right-4 z-30 max-w-[60%] qt-overlay-fade-in">
           <div
-            className={`rounded-lg border px-3 py-2 qt-elev-soft qt-motion qt-motion-fast ${
+            className={`px-3 py-2 qt-motion qt-motion-fast ${
               actionFeedback.state === 'error'
-                ? 'border-red-500/55 bg-red-500/18'
+                ? 'qt-overlay-alert qt-overlay-alert-error'
                 : actionFeedback.state === 'success'
-                  ? 'border-cyan-400/45 bg-cyan-500/15'
-                  : 'border-[var(--qt-border)]/70 bg-black/45'
+                  ? 'qt-overlay-alert qt-overlay-alert-info'
+                  : 'qt-overlay-float-surface'
             }`}
           >
             {actionFeedback.state === 'optimistic' ? (
               <div className="space-y-1.5">
                 <p className="text-[11px] tracking-wide text-[var(--qt-muted)]">{actionFeedback.message}</p>
-                <div className="h-1.5 w-24 rounded-full bg-white/20 animate-pulse" />
+                <div className="qt-overlay-pulse-track w-24 animate-pulse" />
               </div>
             ) : actionFeedback.state === 'error' ? (
-              <p className="text-xs tracking-wide text-red-300/95">{actionFeedback.message}</p>
+              <p className="qt-overlay-text-error text-xs tracking-wide">{actionFeedback.message}</p>
             ) : (
-              <p className="text-xs tracking-wide text-cyan-100">{actionFeedback.message}</p>
+              <p className="text-xs tracking-wide text-[var(--qt-fg)]">{actionFeedback.message}</p>
             )}
           </div>
         </div>
@@ -1756,33 +2217,597 @@ function OverlayPageComponent() {
 
 export default memo(OverlayPageComponent)
 
+type OverlayElementToolboxProps = {
+  language: 'vi' | 'en'
+  anchorEl: HTMLElement | null
+  target: EditableElement
+  label: string
+  activeTool: OverlayToolId | null
+  visibilityEnabled: boolean
+  opacityValue: number
+  supportsTextStyle: boolean
+  colorValue: string
+  sizeValue: number
+  onActivateTarget: () => void
+  onSetTool: (tool: OverlayToolId | null) => void
+  onCloseTool: () => void
+  onDismissPanel: () => void
+  onToggleVisibility: () => void
+  onOpacityChange: (value: number) => void
+  onColorChange: (value: string) => void
+  onSizeChange: (value: number) => void
+  onResetPosition: () => void
+}
+
+function OverlayElementToolbox({
+  language,
+  anchorEl,
+  target,
+  label,
+  activeTool,
+  visibilityEnabled,
+  opacityValue,
+  supportsTextStyle,
+  colorValue,
+  sizeValue,
+  onActivateTarget,
+  onSetTool,
+  onCloseTool,
+  onDismissPanel,
+  onToggleVisibility,
+  onOpacityChange,
+  onColorChange,
+  onSizeChange,
+  onResetPosition,
+}: OverlayElementToolboxProps) {
+  const [barStyle, setBarStyle] = useState<CSSProperties>(() => toToolboxStyle())
+  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>(() => toToolboxStyle())
+  const [hoverHint, setHoverHint] = useState<HoverHint | null>(null)
+  const [hoverHintStyle, setHoverHintStyle] = useState<CSSProperties>(() => toToolboxStyle())
+  const liveAnchorRef = useRef<HTMLElement | null>(anchorEl)
+  const barStyleRef = useRef<CSSProperties>(barStyle)
+  const tooltipStyleRef = useRef<CSSProperties>(tooltipStyle)
+  const hoverHintStyleRef = useRef<CSSProperties>(hoverHintStyle)
+
+  const barRef = useRef<HTMLDivElement | null>(null)
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
+  const hoverHintRef = useRef<HTMLDivElement | null>(null)
+  const toolButtonRefs = useRef<Record<OverlayToolId, HTMLButtonElement | null>>({
+    visibility: null,
+    opacity: null,
+    color: null,
+    resize: null,
+  })
+
+  const setToolButtonRef = useCallback(
+    (tool: OverlayToolId) => (node: HTMLButtonElement | null) => {
+      toolButtonRefs.current[tool] = node
+    },
+    [],
+  )
+
+  const applyBarStyle = useCallback((nextStyle: CSSProperties) => {
+    if (isToolboxStyleEqual(barStyleRef.current, nextStyle)) return false
+    barStyleRef.current = nextStyle
+    setBarStyle(nextStyle)
+    return true
+  }, [])
+
+  const applyTooltipStyle = useCallback((nextStyle: CSSProperties) => {
+    if (isToolboxStyleEqual(tooltipStyleRef.current, nextStyle)) return false
+    tooltipStyleRef.current = nextStyle
+    setTooltipStyle(nextStyle)
+    return true
+  }, [])
+
+  const applyHoverHintStyle = useCallback((nextStyle: CSSProperties) => {
+    if (isToolboxStyleEqual(hoverHintStyleRef.current, nextStyle)) return false
+    hoverHintStyleRef.current = nextStyle
+    setHoverHintStyle(nextStyle)
+    return true
+  }, [])
+
+  const showHoverHint = useCallback((hintLabel: string, hintAnchor: HTMLElement) => {
+    setHoverHint({ label: hintLabel, anchorEl: hintAnchor })
+  }, [])
+
+  const hideHoverHint = useCallback((hintAnchor: HTMLElement) => {
+    setHoverHint((current) => {
+      if (!current) return current
+      return current.anchorEl === hintAnchor ? null : current
+    })
+  }, [])
+
+  useEffect(() => {
+    liveAnchorRef.current = anchorEl
+  }, [anchorEl])
+
+  const resolveLiveAnchor = useCallback(() => {
+    const current = liveAnchorRef.current
+    if (current && current.isConnected) return current
+
+    const fallback = document.querySelector<HTMLElement>(`[data-overlay-element="${target}"]`)
+    if (fallback) {
+      liveAnchorRef.current = fallback
+      return fallback
+    }
+    return null
+  }, [target])
+
+  useEffect(() => {
+    setHoverHint(null)
+  }, [activeTool, target])
+
+  useLayoutEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+
+    let frameId: number | null = null
+    let disposed = false
+    let lastTickAt = 0
+
+    const updatePosition = () => {
+      if (disposed) return
+      const liveAnchor = resolveLiveAnchor()
+      if (!liveAnchor) {
+        applyBarStyle(toToolboxStyle())
+        applyTooltipStyle(toToolboxStyle())
+        return
+      }
+      const anchorRect = liveAnchor.getBoundingClientRect()
+      const barRect = bar.getBoundingClientRect()
+      applyBarStyle(computeHorizontalTooltipStyle(anchorRect, barRect))
+
+      if (!activeTool || !tooltipRef.current) {
+        applyTooltipStyle(toToolboxStyle())
+        return
+      }
+
+      const tooltipAnchorRect = toolButtonRefs.current[activeTool]?.getBoundingClientRect() ?? anchorRect
+      const tooltipRect = tooltipRef.current.getBoundingClientRect()
+      applyTooltipStyle(computeHorizontalTooltipStyle(tooltipAnchorRect, tooltipRect))
+    }
+
+    const trackPosition = (now: number) => {
+      if (disposed) return
+      if (now - lastTickAt >= TOOLBOX_POSITION_TRACK_INTERVAL_MS) {
+        lastTickAt = now
+        updatePosition()
+      }
+      frameId = window.requestAnimationFrame(trackPosition)
+    }
+
+    updatePosition()
+    frameId = window.requestAnimationFrame(trackPosition)
+
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+
+    return () => {
+      disposed = true
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [activeTool, anchorEl, applyBarStyle, applyTooltipStyle, resolveLiveAnchor])
+
+  useLayoutEffect(() => {
+    if (!hoverHint || !hoverHintRef.current) {
+      applyHoverHintStyle(toToolboxStyle())
+      return
+    }
+    let frameId: number | null = null
+    let disposed = false
+    let lastTickAt = 0
+
+    const updatePosition = () => {
+      if (disposed) return
+      const anchorRect = hoverHint.anchorEl.getBoundingClientRect()
+      const hintRect = hoverHintRef.current?.getBoundingClientRect()
+      if (!hintRect) return
+      applyHoverHintStyle(computeHorizontalTooltipStyle(anchorRect, hintRect))
+    }
+
+    const trackPosition = (now: number) => {
+      if (disposed) return
+      if (now - lastTickAt >= TOOLBOX_POSITION_TRACK_INTERVAL_MS) {
+        lastTickAt = now
+        updatePosition()
+      }
+      frameId = window.requestAnimationFrame(trackPosition)
+    }
+
+    updatePosition()
+    frameId = window.requestAnimationFrame(trackPosition)
+
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+
+    return () => {
+      disposed = true
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [applyHoverHintStyle, hoverHint])
+
+  const opacityPercent = Math.round(opacityValue * 100)
+  const activeToolLabel =
+    activeTool === 'visibility'
+      ? t(language, 'overlay.visibility')
+      : activeTool === 'opacity'
+        ? t(language, 'overlay.opacity')
+        : activeTool === 'color'
+          ? t(language, 'overlay.color')
+          : activeTool === 'resize'
+            ? t(language, 'overlay.size')
+            : ''
+  const visibilityLabel =
+    target === 'icon'
+      ? t(language, 'main.overlayShowIcon')
+      : target === 'counter'
+        ? t(language, 'main.overlayShowCounter')
+        : t(language, 'settings.overlayElementsMaster')
+
+  return (
+    <>
+      <div
+        ref={barRef}
+        data-overlay-toolbox="true"
+        style={barStyle}
+        className="qt-overlay-float-surface-strong pointer-events-auto z-50 flex items-center gap-1.5 px-2 py-1.5"
+      >
+        <button
+          data-overlay-toolbox="true"
+          onClick={onActivateTarget}
+          className="qt-overlay-tool-btn qt-overlay-tool-btn-active"
+          title={label}
+          aria-label={label}
+        >
+          {renderElementIcon(target)}
+        </button>
+
+        <button
+          ref={setToolButtonRef('visibility')}
+          data-overlay-toolbox="true"
+          onClick={() => onSetTool(activeTool === 'visibility' ? null : 'visibility')}
+          className={`qt-overlay-tool-btn ${
+            activeTool === 'visibility'
+              ? 'qt-overlay-tool-btn-active'
+              : ''
+          }`}
+          title={t(language, 'overlay.visibility')}
+          aria-label={t(language, 'overlay.visibility')}
+          onMouseEnter={(event) => showHoverHint(t(language, 'overlay.visibility'), event.currentTarget)}
+          onMouseLeave={(event) => hideHoverHint(event.currentTarget)}
+          onFocus={(event) => showHoverHint(t(language, 'overlay.visibility'), event.currentTarget)}
+          onBlur={(event) => hideHoverHint(event.currentTarget)}
+        >
+          <Eye className="size-3.5" />
+        </button>
+
+        <button
+          ref={setToolButtonRef('opacity')}
+          data-overlay-toolbox="true"
+          onClick={() => onSetTool(activeTool === 'opacity' ? null : 'opacity')}
+          className={`qt-overlay-tool-btn ${
+            activeTool === 'opacity'
+              ? 'qt-overlay-tool-btn-active'
+              : ''
+          }`}
+          title={t(language, 'overlay.opacity')}
+          aria-label={t(language, 'overlay.opacity')}
+          onMouseEnter={(event) => showHoverHint(t(language, 'overlay.opacity'), event.currentTarget)}
+          onMouseLeave={(event) => hideHoverHint(event.currentTarget)}
+          onFocus={(event) => showHoverHint(t(language, 'overlay.opacity'), event.currentTarget)}
+          onBlur={(event) => hideHoverHint(event.currentTarget)}
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+
+        <button
+          ref={setToolButtonRef('color')}
+          data-overlay-toolbox="true"
+          disabled={!supportsTextStyle}
+          onClick={() => onSetTool(activeTool === 'color' ? null : 'color')}
+          className={`qt-overlay-tool-btn ${
+            activeTool === 'color'
+              ? 'qt-overlay-tool-btn-active'
+              : ''
+          }`}
+          title={t(language, 'overlay.color')}
+          aria-label={t(language, 'overlay.color')}
+          onMouseEnter={(event) => showHoverHint(t(language, 'overlay.color'), event.currentTarget)}
+          onMouseLeave={(event) => hideHoverHint(event.currentTarget)}
+          onFocus={(event) => showHoverHint(t(language, 'overlay.color'), event.currentTarget)}
+          onBlur={(event) => hideHoverHint(event.currentTarget)}
+        >
+          <Palette className="size-3.5" />
+        </button>
+
+        <button
+          ref={setToolButtonRef('resize')}
+          data-overlay-toolbox="true"
+          disabled={!supportsTextStyle}
+          onClick={() => onSetTool(activeTool === 'resize' ? null : 'resize')}
+          className={`qt-overlay-tool-btn ${
+            activeTool === 'resize'
+              ? 'qt-overlay-tool-btn-active'
+              : ''
+          }`}
+          title={t(language, 'overlay.size')}
+          aria-label={t(language, 'overlay.size')}
+          onMouseEnter={(event) => showHoverHint(t(language, 'overlay.size'), event.currentTarget)}
+          onMouseLeave={(event) => hideHoverHint(event.currentTarget)}
+          onFocus={(event) => showHoverHint(t(language, 'overlay.size'), event.currentTarget)}
+          onBlur={(event) => hideHoverHint(event.currentTarget)}
+        >
+          <Ruler className="size-3.5" />
+        </button>
+
+        <button
+          data-overlay-toolbox="true"
+          onClick={onDismissPanel}
+          className="qt-overlay-tool-btn"
+          title={t(language, 'overlay.exitEdit')}
+          aria-label={t(language, 'overlay.exitEdit')}
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+
+      {hoverHint ? (
+        <div
+          ref={hoverHintRef}
+          data-overlay-toolbox="true"
+          style={hoverHintStyle}
+          className="qt-overlay-float-surface pointer-events-none z-[60] max-w-[260px] px-2 py-1 text-[11px] text-[var(--qt-fg)] transition-[left,top] duration-100 ease-out qt-overlay-fade-in"
+        >
+          {hoverHint.label}
+        </div>
+      ) : null}
+
+      {activeTool ? (
+        <div
+          ref={tooltipRef}
+          data-overlay-toolbox="true"
+          style={tooltipStyle}
+          className="qt-overlay-float-surface-strong pointer-events-auto z-[55] w-[340px] max-w-[94vw] p-3 transition-[left,top] duration-100 ease-out qt-overlay-fade-in"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--qt-muted)]">{activeToolLabel}</p>
+            <button
+              onClick={onCloseTool}
+              className="qt-overlay-tool-btn h-7 w-7"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+
+          <p className="qt-overlay-surface mb-2 px-2 py-1 text-[11px] text-[var(--qt-muted)]">
+            {label} · {visibilityEnabled ? t(language, 'main.enabled') : t(language, 'main.disabled')} · {opacityPercent}%
+          </p>
+
+          {activeTool === 'visibility' ? (
+            <div className="space-y-2">
+              <p className="text-xs text-[var(--qt-muted)]">
+                {visibilityLabel} · {visibilityEnabled ? t(language, 'main.enabled') : t(language, 'main.disabled')}
+              </p>
+              <button
+                onClick={onToggleVisibility}
+                className="qt-overlay-btn qt-overlay-btn-brand w-full py-1.5"
+              >
+                {visibilityEnabled ? t(language, 'main.disabled') : t(language, 'main.enabled')}
+              </button>
+            </div>
+          ) : null}
+
+          {activeTool === 'opacity' ? (
+            <OverlaySlider
+              label={`${t(language, 'overlay.opacity')} · ${label}`}
+              value={opacityValue}
+              min={0.2}
+              max={1}
+              step={0.05}
+              formatValue={(nextValue) => `${Math.round(clampNumber(nextValue, 0, 1) * 100)}%`}
+              onChange={onOpacityChange}
+            />
+          ) : null}
+
+          {activeTool === 'color' ? (
+            supportsTextStyle ? (
+              <label className="flex items-center justify-between gap-2 text-xs text-[var(--qt-muted)]">
+                <span>{t(language, 'overlay.color')}</span>
+                <input
+                  type="color"
+                  value={colorValue}
+                  onChange={(event) => {
+                    const parsed = normalizeColorInput(event.target.value)
+                    if (!parsed) return
+                    onColorChange(parsed)
+                  }}
+                  className="qt-overlay-surface h-9 w-14 cursor-pointer p-0.5"
+                />
+              </label>
+            ) : (
+              <p className="text-xs text-[var(--qt-muted)]">{t(language, 'overlay.selectHint')}</p>
+            )
+          ) : null}
+
+          {activeTool === 'resize' ? (
+            supportsTextStyle ? (
+              <OverlaySlider
+                label={t(language, 'overlay.size')}
+                value={sizeValue}
+                min={target === 'text' ? 24 : 12}
+                max={target === 'text' ? 120 : 72}
+                step={1}
+                formatValue={(nextValue) => `${Math.round(nextValue)}px`}
+                onChange={onSizeChange}
+              />
+            ) : (
+              <p className="text-xs text-[var(--qt-muted)]">{t(language, 'overlay.selectHint')}</p>
+            )
+          ) : null}
+
+          <button
+            onClick={onResetPosition}
+            className="qt-overlay-btn qt-overlay-btn-soft mt-2 w-full py-1.5"
+          >
+            {t(language, 'overlay.resetPosition')}
+          </button>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 type OverlaySliderProps = {
   label: string
   value: number
   min: number
   max: number
   step: number
+  formatValue?: (value: number) => string
   onChange: (value: number) => void
 }
 
-function OverlaySlider({ label, value, min, max, step, onChange }: OverlaySliderProps) {
+function OverlaySlider({ label, value, min, max, step, formatValue, onChange }: OverlaySliderProps) {
+  const safeMin = Number.isFinite(min) ? min : 0
+  const safeMax = Number.isFinite(max) ? max : safeMin + 1
+  const normalizedMin = Math.min(safeMin, safeMax)
+  const normalizedMax = Math.max(safeMin, safeMax)
+  const safeStep = Number.isFinite(step) && step > 0 ? step : 1
+  const clampedValue = clampNumber(value, normalizedMin, normalizedMax)
+  const ratio = normalizedMax === normalizedMin ? 0 : (clampedValue - normalizedMin) / (normalizedMax - normalizedMin)
+  const progressPercent = clampNumber(ratio * 100, 0, 100)
+  const bubblePercent = clampNumber(ratio * 100, 7, 93)
+  const displayValue = formatOverlaySliderValue(clampedValue, safeStep, formatValue)
+  const minLabel = formatOverlaySliderValue(normalizedMin, safeStep, formatValue)
+  const maxLabel = formatOverlaySliderValue(normalizedMax, safeStep, formatValue)
+
   return (
     <label className="block text-xs text-[var(--qt-muted)]">
-      <span>{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => {
-          const parsed = Number.parseFloat(event.target.value)
-          if (Number.isFinite(parsed)) onChange(parsed)
-        }}
-        className="mt-1 w-full accent-[var(--qt-primary)]"
-      />
+      <div className="flex items-center justify-between gap-2">
+        <span>{label}</span>
+        <span className="qt-overlay-range-value">
+          {displayValue}
+        </span>
+      </div>
+      <div className="relative mt-2">
+        <div className="qt-overlay-range-track pointer-events-none" />
+        <div
+          className="qt-overlay-range-fill pointer-events-none"
+          style={{ width: `${progressPercent}%` }}
+        />
+        <div
+          className="qt-overlay-range-bubble pointer-events-none z-10 qt-overlay-fade-in"
+          style={{
+            left: `${bubblePercent}%`,
+          }}
+        >
+          {displayValue}
+        </div>
+        <input
+          type="range"
+          min={normalizedMin}
+          max={normalizedMax}
+          step={safeStep}
+          value={clampedValue}
+          onChange={(event) => {
+            const parsed = Number.parseFloat(event.target.value)
+            if (Number.isFinite(parsed)) onChange(clampNumber(parsed, normalizedMin, normalizedMax))
+          }}
+          className="relative z-10 h-6 w-full accent-[var(--qt-primary)]"
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-[var(--qt-muted)]/90">
+        <span>{minLabel}</span>
+        <span>{maxLabel}</span>
+      </div>
     </label>
   )
+}
+
+function formatOverlaySliderValue(value: number, step: number, formatter?: (value: number) => string) {
+  if (typeof formatter === 'function') return formatter(value)
+  if (!Number.isFinite(value)) return '0'
+
+  const decimals = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3
+  return value.toFixed(decimals).replace(/\.?0+$/, '')
+}
+
+function renderElementIcon(target: EditableElement) {
+  if (target === 'text') return <Type className="size-3.5" />
+  if (target === 'note') return <MessageSquareText className="size-3.5" />
+  if (target === 'icon') return <ImageIcon className="size-3.5" />
+  return <Hash className="size-3.5" />
+}
+
+function toRectSnapshotFromElement(element: HTMLElement | null): OverlayRectSnapshot | null {
+  if (!element) return null
+  const rect = element.getBoundingClientRect()
+  if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) {
+    return null
+  }
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function isValidRectSnapshot(rect: OverlayRectSnapshot | null): rect is OverlayRectSnapshot {
+  return isRectSnapshotValid(rect)
+}
+
+function isSameRectSnapshot(a: OverlayRectSnapshot | null, b: OverlayRectSnapshot | null) {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
+}
+
+function isNearlySameRect(a: OverlayRectSnapshot, b: OverlayRectSnapshot) {
+  return (
+    Math.abs(a.left - b.left) < 0.5 &&
+    Math.abs(a.top - b.top) < 0.5 &&
+    Math.abs(a.width - b.width) < 0.5 &&
+    Math.abs(a.height - b.height) < 0.5
+  )
+}
+
+function isSameImageCardState(a: OverlayImageCardState, b: OverlayImageCardState) {
+  return (
+    a.hasImage === b.hasImage &&
+    a.previewDataUrl === b.previewDataUrl &&
+    a.imageName === b.imageName &&
+    a.isSearching === b.isSearching &&
+    a.lensUrl === b.lensUrl &&
+    a.lensError === b.lensError &&
+    a.resultsCount === b.resultsCount
+  )
+}
+
+function buildMorphGhostStyle(ghost: MorphGhost, running: boolean): CSSProperties {
+  const transform = computeMorphTransform(ghost.from, ghost.to)
+  const baseScale = ghost.direction === 'toPlay' ? 0.98 : 1.01
+  return {
+    position: 'fixed',
+    left: `${ghost.from.left}px`,
+    top: `${ghost.from.top}px`,
+    width: `${ghost.from.width}px`,
+    height: `${ghost.from.height}px`,
+    transformOrigin: 'top left',
+    transform: running
+      ? `translate(${transform.translateX}px, ${transform.translateY}px) scale(${transform.scaleX}, ${transform.scaleY})`
+      : `scale(${baseScale})`,
+    opacity: running ? 0.08 : 0.96,
+    transitionProperty: 'transform, opacity',
+    transitionDuration: `${ghost.direction === 'toEdit' ? MORPH_ENTER_DURATION_MS : MORPH_EXIT_DURATION_MS}ms`,
+    transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+    willChange: 'transform, opacity',
+  }
 }
 
 function toOffsetStyle(
@@ -1803,8 +2828,33 @@ function toOffsetStyle(
 
 function toToolboxStyle(): CSSProperties {
   return {
-    right: '1rem',
-    top: '3.75rem',
+    position: 'fixed',
+    left: '50%',
+    bottom: '4.5rem',
+    transform: 'translateX(-50%)',
+  }
+}
+
+function isToolboxStyleEqual(current: CSSProperties, next: CSSProperties) {
+  return (
+    current.position === next.position &&
+    current.left === next.left &&
+    current.top === next.top &&
+    current.bottom === next.bottom &&
+    current.transform === next.transform
+  )
+}
+
+function computeHorizontalTooltipStyle(anchorRect: DOMRect, tooltipRect: DOMRect): CSSProperties {
+  const { left, top } = computeHorizontalTooltipPlacement(anchorRect, tooltipRect, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  })
+
+  return {
+    position: 'fixed',
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
   }
 }
 
@@ -1818,6 +2868,9 @@ function getDynamicWheelThreshold(_itemCount: number) {
 }
 
 function getInputActionDebounceMs(actionId: string) {
+  if (actionId === 'overlay.capture_probe') {
+    return INPUT_ACTION_CAPTURE_PROBE_DEBOUNCE_MS
+  }
   if (
     actionId === 'app.toggle_enabled' ||
     actionId === 'overlay.toggle_visibility' ||
@@ -1930,6 +2983,8 @@ function toStyleDraftFromSettings(settings: Settings): StyleDraft {
   return {
     opacity: settings.opacity,
     noteOpacity: settings.noteOpacity,
+    iconOpacity: settings.iconOpacity,
+    counterOpacity: settings.counterOpacity,
     fontSize: settings.fontSize,
     noteSize: settings.noteSize,
     textColor: settings.textColor,
@@ -1941,6 +2996,8 @@ function isSameStyleDraft(a: StyleDraft, b: StyleDraft) {
   return (
     a.opacity === b.opacity &&
     a.noteOpacity === b.noteOpacity &&
+    a.iconOpacity === b.iconOpacity &&
+    a.counterOpacity === b.counterOpacity &&
     a.fontSize === b.fontSize &&
     a.noteSize === b.noteSize &&
     a.textColor === b.textColor &&

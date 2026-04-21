@@ -1,19 +1,19 @@
 {
   "name": "quicktext",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "author": "Kira",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "npm run dev:free-port && concurrently --kill-others --success first --names NEXT,PYTHON,ELECTRON --prefix-colors cyan,green,magenta \"npm run dev:next\" \"npm run dev:python\" \"npm run dev:electron\"",
-    "dev:fast": "npm run dev:free-port && concurrently --kill-others --success first --names NEXT,PYTHON,ELECTRON --prefix-colors cyan,green,magenta \"npm run dev:next:turbo\" \"npm run dev:python\" \"npm run dev:electron\"",
-    "dev:cold": "npm run dev:free-port && npm run dev:clean-next && concurrently --kill-others --success first --names NEXT,PYTHON,ELECTRON --prefix-colors cyan,green,magenta \"npm run dev:next\" \"npm run dev:python\" \"npm run dev:electron\"",
+    "dev": "npm run dev:free-port && concurrently --kill-others --success first --names NEXT,ELECTRON --prefix-colors cyan,magenta \"npm run dev:next\" \"npm run dev:electron\"",
+    "dev:fast": "npm run dev:free-port && concurrently --kill-others --success first --names NEXT,ELECTRON --prefix-colors cyan,magenta \"npm run dev:next:turbo\" \"npm run dev:electron\"",
+    "dev:cold": "npm run dev:free-port && npm run dev:clean-next && concurrently --kill-others --success first --names NEXT,ELECTRON --prefix-colors cyan,magenta \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:clean-next": "node scripts/clean-next-dev.mjs",
     "dev:free-port": "node scripts/free-port.mjs 3000",
     "dev:next": "set QT_NEXT_DIST_DIR=.next-dev&& next dev --webpack -p 3000",
     "dev:next:turbo": "set QT_NEXT_DIST_DIR=.next-dev&& next dev -p 3000",
     "serve:next": "set QT_NEXT_DIST_DIR=.next&& next start -p 3000",
-    "run:local": "npm run dev:free-port && concurrently --kill-others --success first --names NEXT,PYTHON,ELECTRON --prefix-colors cyan,green,magenta \"npm run serve:next\" \"npm run dev:python\" \"npm run dev:electron\"",
+    "run:local": "npm run dev:free-port && concurrently --kill-others --success first --names NEXT,ELECTRON --prefix-colors cyan,magenta \"npm run serve:next\" \"npm run dev:electron\"",
     "dev:python": "py python/tool.py",
     "dev:electron": "wait-on tcp:3000 && node scripts/start-electron.cjs",
     "build": "next build",
@@ -24,18 +24,21 @@
     "build:standalone": "node scripts/prepare-standalone.cjs",
     "build:win-icon": "node scripts/prepare-win-icon.cjs",
     "build:python-service": "node scripts/build-python-service.mjs",
+    "build:native-core": "node scripts/build-native-core.mjs",
     "release:launcher:manifest": "node scripts/generate-launcher-manifest.mjs",
     "release:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1",
     "release:launcher:exe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-exe.ps1",
+    "test": "node scripts/run-tests.mjs",
+    "test:ci": "node scripts/run-tests.mjs",
     "test:prod": "npm run build && npm run run:local",
-    "dist:win": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:python-service && electron-builder --win nsis",
-    "dist:folder": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:python-service && electron-builder --win dir",
+    "dist:win": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:native-core && electron-builder --win nsis",
+    "dist:folder": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:native-core && electron-builder --win dir",
     "start": "next start",
     "lint": "eslint ."
   },
   "build": {
     "appId": "com.quicktext.desktop",
-    "productName": "QuickText",
+    "productName": "Quick Text",
     "executableName": "QuickText",
     "copyright": "Copyright © 2026 Kira",
     "directories": {
@@ -47,7 +50,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "public/**"
+      "public/**",
+      "electron/native/build/Release/**"
     ],
     "extraResources": [
       {
@@ -55,13 +59,6 @@
         "to": ".next-build/standalone-runtime",
         "filter": [
           "**/*"
-        ]
-      },
-      {
-        "from": "build/python",
-        "to": "python",
-        "filter": [
-          "QuickTextPython.exe"
         ]
       }
     ],
@@ -77,6 +74,8 @@
     }
   },
   "dependencies": {
+    "@google-cloud/translate": "^9.3.0",
+    "@google-cloud/vision": "^5.3.5",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
@@ -110,8 +109,8 @@
     "clsx": "^2.1.1",
     "cmdk": "1.1.1",
     "date-fns": "4.1.0",
-    "embla-carousel-react": "8.6.0",
     "electron-updater": "^6.6.2",
+    "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
@@ -124,6 +123,7 @@
     "recharts": "2.15.0",
     "sonner": "^1.7.1",
     "tailwind-merge": "^3.3.1",
+    "tesseract.js": "^7.0.0",
     "vaul": "^1.1.2",
     "zod": "^3.24.1"
   },
@@ -133,13 +133,16 @@
     "@types/node": "^22",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "concurrently": "8.2.2",
+    "concurrently": "9.2.1",
     "electron": "29.4.6",
     "electron-builder": "^24.13.3",
     "eslint": "^9.23.0",
+    "node-addon-api": "^8.2.0",
+    "node-gyp": "^12.2.0",
     "png-to-ico": "^2.1.8",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
+    "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3",
     "wait-on": "7.2.0"

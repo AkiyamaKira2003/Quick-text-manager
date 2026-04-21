@@ -73,6 +73,13 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
   )
 
   useEffect(() => {
+    ;(window as unknown as { __qtHotkeyRecording?: boolean }).__qtHotkeyRecording = !!recordingActionId
+    return () => {
+      ;(window as unknown as { __qtHotkeyRecording?: boolean }).__qtHotkeyRecording = false
+    }
+  }, [recordingActionId])
+
+  useEffect(() => {
     if (!recordingActionId) return
 
     const action = HOTKEY_ACTIONS.find((item) => item.id === recordingActionId)
@@ -117,8 +124,11 @@ export default function QuickHotkeyPanel({ settings, updateSettings, className =
     const handleKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        const nextOverrides = deriveHotkeyOverridesFromSettings(settings)
+        nextOverrides[action.id] = null
+        void updateSettings(createHotkeyPatchFromOverrides(nextOverrides))
         setRecordingActionId(null)
-        setBindStatus('')
+        setBindStatus(t(language, 'hk.saved', { combo: t(language, 'main.none') }))
         return
       }
 

@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'QuickText Kira',
+  title: 'Quick Text by Kira',
   description: 'One click, one prompt quick text manager and in-game overlay.',
-  generator: 'QuickText',
+  generator: 'Quick Text',
   icons: {
     icon: [{ url: '/icon.png', type: 'image/png' }],
     apple: '/icon.png',

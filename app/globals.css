@@ -335,6 +335,168 @@ html[data-ui-mode='light'] {
     }
   }
 
+  @keyframes qt-edit-mode-enter {
+    0% {
+      opacity: 0.46;
+      transform: translateY(14px) scale(0.965);
+      filter: blur(7px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes qt-edit-mode-exit {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    100% {
+      opacity: 0.82;
+      transform: translateY(8px) scale(0.985);
+      filter: blur(4px);
+    }
+  }
+
+  @keyframes qt-overlay-content-enter {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scale(0.986);
+      filter: blur(4px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes qt-overlay-content-exit {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    100% {
+      opacity: 0.9;
+      transform: translateY(6px) scale(0.99);
+      filter: blur(2px);
+    }
+  }
+
+  @keyframes qt-overlay-single-in {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+      filter: blur(2px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes qt-overlay-text-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes qt-play-context-roll-next {
+    0% {
+      opacity: 0.72;
+      transform: perspective(1000px) rotateX(-30deg) translateY(18px) scale(0.965);
+    }
+
+    62% {
+      opacity: 1;
+      transform: perspective(1000px) rotateX(6deg) translateY(-1px) scale(1.008);
+    }
+
+    100% {
+      opacity: 1;
+      transform: perspective(1000px) rotateX(0deg) translateY(0) scale(1);
+    }
+  }
+
+  @keyframes qt-play-context-roll-prev {
+    0% {
+      opacity: 0.72;
+      transform: perspective(1000px) rotateX(30deg) translateY(-18px) scale(0.965);
+    }
+
+    62% {
+      opacity: 1;
+      transform: perspective(1000px) rotateX(-6deg) translateY(1px) scale(1.008);
+    }
+
+    100% {
+      opacity: 1;
+      transform: perspective(1000px) rotateX(0deg) translateY(0) scale(1);
+    }
+  }
+
+  @keyframes qt-play-context-row-roll-next {
+    0% {
+      opacity: 0;
+      transform: perspective(960px) rotateX(-52deg) translateY(18px) scale(0.92);
+    }
+
+    66% {
+      opacity: 1;
+      transform: perspective(960px) rotateX(8deg) translateY(-1px) scale(1.008);
+    }
+
+    100% {
+      opacity: 1;
+      transform: perspective(960px) rotateX(0deg) translateY(0) scale(1);
+    }
+  }
+
+  @keyframes qt-play-context-row-roll-prev {
+    0% {
+      opacity: 0;
+      transform: perspective(960px) rotateX(52deg) translateY(-18px) scale(0.92);
+    }
+
+    66% {
+      opacity: 1;
+      transform: perspective(960px) rotateX(-8deg) translateY(1px) scale(1.008);
+    }
+
+    100% {
+      opacity: 1;
+      transform: perspective(960px) rotateX(0deg) translateY(0) scale(1);
+    }
+  }
+
+  @keyframes qt-image-compact-in {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   .qt-shell {
     background:
       radial-gradient(circle at 88% 8%, color-mix(in oklab, var(--qt-primary) 22%, transparent) 0%, transparent 34%),
@@ -387,6 +549,15 @@ html[data-ui-mode='light'] {
     border: 1px solid var(--qt-border);
     background: var(--qt-surface-soft);
     color: var(--qt-fg);
+  }
+
+  [data-tray-menu='true'],
+  [data-tray-menu='true'] *,
+  [data-tray-menu='true'] *::before,
+  [data-tray-menu='true'] *::after {
+    animation: none !important;
+    transition: none !important;
+    transform: none;
   }
 
   .qt-motion {
@@ -463,6 +634,921 @@ html[data-ui-mode='light'] {
     animation: qt-overlay-fade-in var(--qt-motion-duration-fast) var(--qt-motion-ease-emphasis);
   }
 
+  .qt-edit-enter {
+    animation: qt-edit-mode-enter var(--qt-motion-duration-slow) var(--qt-motion-ease-emphasis) both;
+  }
+
+  .qt-edit-exit {
+    animation: qt-edit-mode-exit var(--qt-motion-duration-base) var(--qt-motion-ease-smooth) both;
+  }
+
+  .qt-overlay-content-enter {
+    animation: qt-overlay-content-enter 260ms var(--qt-motion-ease-emphasis) both;
+  }
+
+  .qt-overlay-content-exit {
+    animation: qt-overlay-content-exit 220ms var(--qt-motion-ease-smooth) both;
+  }
+
+  .qt-overlay-single {
+    animation: qt-overlay-single-in 260ms var(--qt-motion-ease-emphasis) both;
+  }
+
+  .qt-overlay-main-line {
+    animation: qt-overlay-text-pop 220ms var(--qt-motion-ease-emphasis) both;
+  }
+
+  .qt-overlay-note-line {
+    animation: qt-overlay-text-pop 260ms var(--qt-motion-ease-emphasis) both;
+    animation-delay: 24ms;
+  }
+
+  .qt-play-context-stack {
+    position: relative;
+    border-radius: 12px;
+    background: transparent;
+    border: 0;
+    padding: 8px 4px;
+    transform-origin: center center;
+    transform-style: preserve-3d;
+    perspective: 1000px;
+    overflow: hidden;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
+  }
+
+  .qt-play-context-stack-next {
+    animation: qt-play-context-roll-next 320ms cubic-bezier(0.22, 0.8, 0.2, 1) both;
+  }
+
+  .qt-play-context-stack-prev {
+    animation: qt-play-context-roll-prev 320ms cubic-bezier(0.22, 0.8, 0.2, 1) both;
+  }
+
+  .qt-play-context-row {
+    border-radius: 8px;
+    border: 0;
+    background: transparent;
+    padding: 5px 2px;
+    transform-origin: center center -28px;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+    will-change: transform, opacity, filter;
+  }
+
+  .qt-play-context-row-anim {
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.2, 0.75, 0.2, 1);
+    animation-fill-mode: both;
+  }
+
+  .qt-play-context-stack-next .qt-play-context-row-anim {
+    animation-name: qt-play-context-row-roll-next;
+  }
+
+  .qt-play-context-stack-prev .qt-play-context-row-anim {
+    animation-name: qt-play-context-row-roll-prev;
+  }
+
+  .qt-play-context-row:nth-child(1) {
+    animation-delay: 0ms;
+  }
+
+  .qt-play-context-row:nth-child(2) {
+    animation-delay: 28ms;
+  }
+
+  .qt-play-context-row:nth-child(3) {
+    animation-delay: 56ms;
+  }
+
+  .qt-play-context-row-current {
+    border: 0;
+    background: transparent;
+  }
+
+  .qt-play-context-row-side {
+    border: 0;
+    background: transparent;
+  }
+
+  .qt-image-compact-card {
+    border-radius: 12px;
+    border: 0;
+    background: transparent;
+    padding: 8px 10px;
+    animation: qt-image-compact-in 240ms var(--qt-motion-ease-emphasis) both;
+  }
+
+  .qt-image-compact-overlay {
+    border: 1px solid color-mix(in oklab, var(--qt-border) 38%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--qt-surface-soft) 18%, transparent) 0%,
+        color-mix(in oklab, var(--qt-surface) 12%, transparent) 100%
+      );
+    box-shadow:
+      0 10px 22px color-mix(in oklab, #000 20%, transparent),
+      inset 0 0 0 1px color-mix(in oklab, #fff 6%, transparent);
+    backdrop-filter: blur(6px) saturate(118%);
+    -webkit-backdrop-filter: blur(6px) saturate(118%);
+  }
+
+  .qt-image-compact-status-label {
+    color: color-mix(in oklab, var(--qt-muted) 82%, var(--qt-fg) 18%);
+    text-shadow: 0 1px 6px color-mix(in oklab, #000 58%, transparent);
+  }
+
+  .qt-image-compact-status-value {
+    color: color-mix(in oklab, var(--qt-fg) 92%, white 8%);
+    text-shadow: 0 1px 8px color-mix(in oklab, #000 62%, transparent);
+  }
+
+  .qt-image-compact-reply {
+    color: color-mix(in oklab, var(--qt-fg) 94%, white 6%);
+    text-shadow: 0 1px 10px color-mix(in oklab, #000 66%, transparent);
+  }
+
+  .qt-overlay-panel {
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 34%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 58%, transparent);
+    box-shadow:
+      0 10px 24px color-mix(in oklab, #000 16%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--qt-border) 12%, transparent);
+    backdrop-filter: blur(8px) saturate(112%);
+    -webkit-backdrop-filter: blur(8px) saturate(112%);
+  }
+
+  .qt-overlay-panel-edit {
+    border-color: color-mix(in oklab, var(--qt-border) 40%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--qt-surface-soft) 50%, transparent) 0%,
+        color-mix(in oklab, var(--qt-surface) 62%, transparent) 100%
+      );
+  }
+
+  .qt-overlay-edit-compact {
+    border-radius: 14px;
+    border-color: color-mix(in oklab, var(--qt-border) 38%, transparent);
+    background:
+      radial-gradient(circle at 10% 0%, color-mix(in oklab, var(--qt-primary) 7%, transparent) 0%, transparent 46%),
+      color-mix(in oklab, var(--qt-surface) 56%, transparent);
+    box-shadow:
+      0 8px 20px color-mix(in oklab, #000 14%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--qt-border) 10%, transparent);
+    backdrop-filter: blur(7px) saturate(108%);
+    -webkit-backdrop-filter: blur(7px) saturate(108%);
+  }
+
+  .qt-overlay-edit-compact .qt-overlay-header {
+    padding-top: 0.32rem;
+    padding-bottom: 0.32rem;
+    background: color-mix(in oklab, var(--qt-surface-soft) 56%, transparent);
+  }
+
+  .qt-overlay-edit-compact .qt-overlay-header p:last-child {
+    display: none;
+  }
+
+  .qt-overlay-edit-rail {
+    border: 1px solid color-mix(in oklab, var(--qt-border) 62%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--qt-surface-soft) 80%, transparent) 0%,
+        color-mix(in oklab, var(--qt-surface) 88%, transparent) 100%
+      );
+    box-shadow:
+      0 12px 22px color-mix(in oklab, #000 24%, transparent),
+      inset 0 0 0 1px color-mix(in oklab, #fff 5%, transparent);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+  }
+
+  .qt-overlay-panel-play {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .qt-overlay-panel-ghost {
+    border-style: dashed;
+    border-color: color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 58%, transparent);
+    box-shadow: 0 10px 24px color-mix(in oklab, #000 16%, transparent);
+  }
+
+  .qt-overlay-header {
+    border-bottom: 1px solid color-mix(in oklab, var(--qt-border) 38%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--qt-surface-soft) 52%, transparent) 0%,
+        color-mix(in oklab, var(--qt-surface) 46%, transparent) 100%
+      );
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      opacity var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-dock {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 68%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 74%, transparent);
+    box-shadow:
+      0 8px 20px color-mix(in oklab, #000 18%, transparent),
+      inset 0 0 0 1px color-mix(in oklab, #fff 5%, transparent);
+    padding: 0.18rem 0.22rem;
+  }
+
+  .qt-overlay-dock-btn {
+    position: relative;
+    display: inline-flex;
+    height: 1.95rem;
+    width: 1.95rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 74%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 84%, transparent);
+    color: var(--qt-fg);
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      transform var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      box-shadow var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-dock-btn:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--qt-primary) 84%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 18%, var(--qt-surface-soft) 82%);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 14px color-mix(in oklab, #000 20%, transparent);
+  }
+
+  .qt-overlay-dock-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .qt-overlay-dock-btn-active {
+    border-color: color-mix(in oklab, var(--qt-primary) 86%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 24%, var(--qt-surface-soft) 76%);
+    box-shadow:
+      0 10px 18px color-mix(in oklab, #000 24%, transparent),
+      inset 0 0 0 1px color-mix(in oklab, var(--qt-primary) 24%, transparent);
+  }
+
+  .qt-overlay-dock-btn-danger {
+    border-color: color-mix(in oklab, #ef4444 78%, transparent);
+    background: color-mix(in oklab, #ef4444 22%, transparent);
+    color: #fee2e2;
+  }
+
+  .qt-overlay-dock-btn-danger:hover:not(:disabled) {
+    border-color: color-mix(in oklab, #ef4444 92%, transparent);
+    background: color-mix(in oklab, #ef4444 32%, transparent);
+  }
+
+  .qt-overlay-dock-btn[data-qt-tip]::after {
+    content: attr(data-qt-tip);
+    position: absolute;
+    top: calc(100% + 0.42rem);
+    left: 50%;
+    transform: translate(-50%, -4px) scale(0.98);
+    border-radius: 0.45rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 74%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 94%, #000 6%);
+    color: color-mix(in oklab, var(--qt-fg) 90%, white 10%);
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    padding: 0.22rem 0.44rem;
+    min-width: max-content;
+    max-width: 11rem;
+    z-index: 40;
+    box-shadow: 0 10px 18px color-mix(in oklab, #000 24%, transparent);
+    transition:
+      opacity var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      transform var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-dock-btn:hover[data-qt-tip]::after,
+  .qt-overlay-dock-btn:focus-visible[data-qt-tip]::after {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+
+  /* Legacy pseudo-tooltip kept for compatibility, but hidden once portal tooltip is active. */
+  .qt-overlay-dock-btn[data-qt-tip]::after {
+    display: none;
+  }
+
+  .qt-overlay-portal-tooltip {
+    border: 1px solid color-mix(in oklab, var(--qt-border) 46%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 82%, #020617 18%);
+    color: color-mix(in oklab, var(--qt-fg) 92%, white 8%);
+    box-shadow: 0 8px 18px color-mix(in oklab, #000 24%, transparent);
+    font-size: 11px;
+    line-height: 1.25;
+    max-width: 14rem;
+    padding: 0.34rem 0.52rem;
+    z-index: 2147483640;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .qt-overlay-dock-panel {
+    border-radius: 0.95rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 74%, transparent);
+    background:
+      radial-gradient(circle at 14% 10%, color-mix(in oklab, var(--qt-primary) 14%, transparent) 0%, transparent 44%),
+      radial-gradient(circle at 94% 0%, color-mix(in oklab, var(--qt-accent) 13%, transparent) 0%, transparent 40%),
+      color-mix(in oklab, var(--qt-surface) 92%, transparent);
+    box-shadow:
+      0 18px 34px color-mix(in oklab, #000 28%, transparent),
+      inset 0 0 0 1px color-mix(in oklab, #fff 6%, transparent);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+  }
+
+  .qt-overlay-dock-range {
+    width: 100%;
+    accent-color: color-mix(in oklab, var(--qt-primary) 84%, white 16%);
+  }
+
+  .qt-overlay-dock-move-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem;
+    align-items: center;
+    justify-items: center;
+  }
+
+  .qt-overlay-dock-move-center {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2rem;
+    width: 100%;
+    border-radius: 0.625rem;
+    border: 1px dashed color-mix(in oklab, var(--qt-border) 70%, transparent);
+    color: color-mix(in oklab, var(--qt-muted) 84%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 64%, transparent);
+  }
+
+  .qt-overlay-dock-mini-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    width: 100%;
+    height: 2rem;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 76%, transparent);
+    color: color-mix(in oklab, var(--qt-fg) 92%, transparent);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      transform var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-dock-mini-btn:hover {
+    border-color: color-mix(in oklab, var(--qt-primary) 78%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 17%, var(--qt-surface-soft) 83%);
+    transform: translateY(-1px);
+  }
+
+  .qt-overlay-dock-mini-btn span {
+    line-height: 1;
+  }
+
+  .qt-overlay-icon-btn {
+    display: inline-flex;
+    height: 2rem;
+    width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 72%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 84%, transparent);
+    color: var(--qt-fg);
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      transform var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-icon-btn:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--qt-primary) 84%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 62%, var(--qt-primary) 18%);
+    transform: translateY(-1px);
+  }
+
+  .qt-overlay-icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+  }
+
+  .qt-overlay-icon-btn-danger {
+    border-color: color-mix(in oklab, #ef4444 78%, transparent);
+    background: color-mix(in oklab, #ef4444 22%, transparent);
+    color: #fee2e2;
+  }
+
+  .qt-overlay-icon-btn-danger:hover:not(:disabled) {
+    border-color: color-mix(in oklab, #ef4444 92%, transparent);
+    background: color-mix(in oklab, #ef4444 30%, transparent);
+  }
+
+  .qt-overlay-popover {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 92%, transparent);
+    box-shadow: var(--qt-shadow-soft);
+    backdrop-filter: blur(8px) saturate(115%);
+    -webkit-backdrop-filter: blur(8px) saturate(115%);
+  }
+
+  .qt-overlay-surface {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 66%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--qt-surface-soft) 74%, transparent) 0%,
+        color-mix(in oklab, var(--qt-surface) 68%, transparent) 100%
+      );
+  }
+
+  .qt-overlay-surface-dashed {
+    border-style: dashed;
+  }
+
+  .qt-overlay-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    height: 2.25rem;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 72%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 82%, transparent);
+    color: var(--qt-fg);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding-inline: 0.75rem;
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      transform var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      opacity var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  .qt-overlay-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+  }
+
+  .qt-overlay-btn-brand {
+    border-color: color-mix(in oklab, var(--qt-primary) 82%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 20%, var(--qt-surface-soft) 80%);
+    color: var(--qt-fg);
+  }
+
+  .qt-overlay-btn-brand:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--qt-primary) 28%, var(--qt-surface-soft) 72%);
+  }
+
+  .qt-overlay-btn-soft {
+    border-color: color-mix(in oklab, var(--qt-border) 68%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 70%, transparent);
+  }
+
+  .qt-overlay-btn-soft:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--qt-surface-soft) 88%, transparent);
+  }
+
+  .qt-overlay-btn-success {
+    border-color: color-mix(in oklab, #22c55e 72%, transparent);
+    background: color-mix(in oklab, #22c55e 18%, var(--qt-surface-soft) 82%);
+    color: #dcfce7;
+  }
+
+  .qt-overlay-btn-success:hover:not(:disabled) {
+    background: color-mix(in oklab, #22c55e 25%, var(--qt-surface-soft) 75%);
+  }
+
+  .qt-overlay-btn-danger {
+    border-color: color-mix(in oklab, #ef4444 75%, transparent);
+    background: color-mix(in oklab, #ef4444 16%, var(--qt-surface-soft) 84%);
+    color: #fee2e2;
+  }
+
+  .qt-overlay-btn-danger:hover:not(:disabled) {
+    background: color-mix(in oklab, #ef4444 24%, var(--qt-surface-soft) 76%);
+  }
+
+  .qt-overlay-btn-accent {
+    border-color: color-mix(in oklab, var(--qt-accent) 76%, transparent);
+    background: color-mix(in oklab, var(--qt-accent) 18%, var(--qt-surface-soft) 82%);
+    color: var(--qt-fg);
+  }
+
+  .qt-overlay-btn-accent:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--qt-accent) 26%, var(--qt-surface-soft) 74%);
+  }
+
+  .qt-overlay-alert {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 68%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 76%, transparent);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .qt-overlay-alert-error {
+    border-color: color-mix(in oklab, #ef4444 74%, transparent);
+    background: color-mix(in oklab, #ef4444 16%, transparent);
+    color: #fecaca;
+  }
+
+  .qt-overlay-alert-info {
+    border-color: color-mix(in oklab, var(--qt-primary) 58%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 14%, transparent);
+    color: color-mix(in oklab, var(--qt-fg) 90%, white 10%);
+  }
+
+  .qt-overlay-preview-frame {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, #000 30%, var(--qt-surface) 70%);
+    overflow: hidden;
+  }
+
+  .qt-overlay-textarea {
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 70%, #000 30%);
+    color: var(--qt-fg);
+    border-radius: 0.625rem;
+    outline: none;
+  }
+
+  .qt-overlay-textarea:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--qt-primary) 60%, transparent);
+  }
+
+  .qt-overlay-response-box {
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 70%, #000 30%);
+    border-radius: 0.625rem;
+    padding: 0.6rem 0.7rem;
+    min-height: 10rem;
+  }
+
+  .qt-overlay-resize-handle {
+    border: 1px solid color-mix(in oklab, var(--qt-border) 72%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 88%, transparent);
+    border-radius: 0.25rem;
+  }
+
+  .qt-overlay-resize-handle-active {
+    border-color: color-mix(in oklab, var(--qt-primary) 80%, transparent);
+  }
+
+  .qt-overlay-edit-chip {
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 86%, transparent);
+    box-shadow: var(--qt-shadow-soft);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .qt-overlay-edit-btn {
+    height: 2rem;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 80%, transparent);
+    color: var(--qt-fg);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding-inline: 0.625rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-edit-btn:hover {
+    border-color: color-mix(in oklab, var(--qt-primary) 76%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 16%, var(--qt-surface-soft) 84%);
+  }
+
+  .qt-overlay-edit-btn-active {
+    border-color: color-mix(in oklab, var(--qt-primary) 86%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 24%, var(--qt-surface-soft) 76%);
+    color: var(--qt-fg);
+  }
+
+  .qt-overlay-edit-btn-danger {
+    border-color: color-mix(in oklab, #ef4444 76%, transparent);
+    background: color-mix(in oklab, #ef4444 18%, transparent);
+    color: #fee2e2;
+    border-radius: 999px;
+    width: 2rem;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .qt-overlay-edit-btn-danger:hover {
+    border-color: color-mix(in oklab, #ef4444 88%, transparent);
+    background: color-mix(in oklab, #ef4444 26%, transparent);
+  }
+
+  .qt-overlay-float-surface {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 68%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 82%, #000 18%);
+    box-shadow: var(--qt-shadow-soft);
+  }
+
+  .qt-overlay-float-surface-strong {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 72%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 88%, #000 12%);
+    box-shadow: var(--qt-shadow-medium);
+    backdrop-filter: blur(8px) saturate(112%);
+    -webkit-backdrop-filter: blur(8px) saturate(112%);
+  }
+
+  .qt-overlay-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 66%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 72%, transparent);
+    color: var(--qt-fg);
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-tool-btn:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--qt-primary) 78%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 14%, var(--qt-surface-soft) 86%);
+  }
+
+  .qt-overlay-tool-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .qt-overlay-tool-btn-active {
+    border-color: color-mix(in oklab, var(--qt-primary) 88%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 24%, var(--qt-surface-soft) 76%);
+    color: var(--qt-fg);
+  }
+
+  .qt-overlay-range-track {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 0.375rem;
+    transform: translateY(-50%);
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--qt-border) 36%, transparent);
+  }
+
+  .qt-overlay-range-fill {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 0.375rem;
+    transform: translateY(-50%);
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--qt-primary) 80%, transparent);
+  }
+
+  .qt-overlay-range-bubble {
+    position: absolute;
+    top: -1.25rem;
+    transform: translateX(-50%);
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 70%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 90%, #000 10%);
+    color: var(--qt-fg);
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.125rem 0.375rem;
+  }
+
+  .qt-overlay-range-value {
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 64%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 74%, transparent);
+    color: var(--qt-fg);
+    padding: 0.125rem 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+  }
+
+  .qt-overlay-hud-shell {
+    border-radius: 0.875rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 62%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 36%, transparent);
+    box-shadow: 0 10px 24px color-mix(in oklab, #000 22%, transparent);
+    backdrop-filter: blur(4px) saturate(112%);
+    -webkit-backdrop-filter: blur(4px) saturate(112%);
+  }
+
+  .qt-overlay-hud-shell-hover {
+    border-color: color-mix(in oklab, var(--qt-primary) 74%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 52%, transparent);
+  }
+
+  .qt-overlay-hud-shell-active {
+    border-color: color-mix(in oklab, var(--qt-primary) 86%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 66%, transparent);
+    box-shadow:
+      0 12px 28px color-mix(in oklab, #000 26%, transparent),
+      0 0 0 2px color-mix(in oklab, var(--qt-primary) 34%, transparent);
+  }
+
+  .qt-overlay-image-card-shell {
+    border-radius: 0.875rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 66%, transparent);
+    background: color-mix(in oklab, var(--qt-surface) 42%, transparent);
+    box-shadow: 0 10px 26px color-mix(in oklab, #000 24%, transparent);
+    backdrop-filter: blur(6px) saturate(112%);
+    -webkit-backdrop-filter: blur(6px) saturate(112%);
+  }
+
+  .qt-overlay-image-card-shell-edit {
+    border-style: dashed;
+    border-color: color-mix(in oklab, var(--qt-primary) 74%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 46%, transparent);
+  }
+
+  .qt-overlay-image-card-media {
+    background: color-mix(in oklab, var(--qt-surface-soft) 34%, #000 66%);
+  }
+
+  .qt-overlay-pulse-track {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--qt-border) 44%, transparent);
+  }
+
+  .qt-overlay-pulse-track-soft {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--qt-border) 30%, transparent);
+  }
+
+  .qt-overlay-text-success {
+    color: color-mix(in oklab, #34d399 84%, white 16%);
+  }
+
+  .qt-overlay-text-error {
+    color: color-mix(in oklab, #f87171 88%, white 12%);
+  }
+
+  .qt-overlay-manager-shell {
+    border-radius: 1.125rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 62%, transparent);
+    background:
+      radial-gradient(circle at 14% 4%, color-mix(in oklab, var(--qt-primary) 12%, transparent) 0%, transparent 42%),
+      radial-gradient(circle at 92% 0%, color-mix(in oklab, var(--qt-accent) 10%, transparent) 0%, transparent 38%),
+      color-mix(in oklab, var(--qt-surface) 86%, transparent);
+    box-shadow:
+      0 16px 38px color-mix(in oklab, #000 28%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--qt-border) 20%, transparent);
+    overflow: hidden;
+  }
+
+  .qt-overlay-manager-header {
+    border-bottom: 1px solid color-mix(in oklab, var(--qt-border) 62%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 78%, transparent);
+  }
+
+  .qt-overlay-manager-list {
+    border-radius: 0.875rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 60%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 72%, transparent);
+  }
+
+  .qt-overlay-manager-stat {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 66%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--qt-surface-soft) 80%, transparent) 0%,
+        color-mix(in oklab, var(--qt-surface) 72%, transparent) 100%
+      );
+    padding: 0.5rem 0.75rem;
+  }
+
+  .qt-overlay-manager-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 66%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 74%, transparent);
+    color: var(--qt-muted);
+    padding-inline: 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-manager-chip:hover {
+    border-color: color-mix(in oklab, var(--qt-primary) 70%, transparent);
+    color: var(--qt-fg);
+  }
+
+  .qt-overlay-manager-chip-active {
+    border-color: color-mix(in oklab, var(--qt-primary) 84%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 22%, var(--qt-surface-soft) 78%);
+    color: var(--qt-fg);
+  }
+
+  .qt-overlay-manager-row {
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--qt-border) 62%, transparent);
+    background: color-mix(in oklab, var(--qt-surface-soft) 66%, transparent);
+    transition:
+      border-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      background-color var(--qt-motion-duration-fast) var(--qt-motion-ease-standard),
+      box-shadow var(--qt-motion-duration-fast) var(--qt-motion-ease-standard);
+  }
+
+  .qt-overlay-manager-row:hover {
+    border-color: color-mix(in oklab, var(--qt-primary) 64%, transparent);
+  }
+
+  .qt-overlay-manager-row-selected {
+    border-color: color-mix(in oklab, var(--qt-primary) 82%, transparent);
+    background: color-mix(in oklab, var(--qt-primary) 12%, var(--qt-surface-soft) 88%);
+    box-shadow: inset 2px 0 0 color-mix(in oklab, var(--qt-primary) 90%, transparent);
+  }
+
+  .qt-overlay-manager-row-multi {
+    border-color: color-mix(in oklab, var(--qt-accent) 76%, transparent);
+    background: color-mix(in oklab, var(--qt-accent) 12%, var(--qt-surface-soft) 88%);
+    box-shadow: inset 2px 0 0 color-mix(in oklab, var(--qt-accent) 84%, transparent);
+  }
+
+  .qt-overlay-manager-hint {
+    color: color-mix(in oklab, var(--qt-primary) 80%, white 20%);
+  }
+
+  .qt-manager-drag-strip {
+    height: 14px;
+    border-radius: 999px;
+    background: transparent;
+  }
+
   .qt-settings-slide {
     transition-property: transform, opacity;
     transition-duration: var(--qt-motion-duration-slow);
@@ -481,10 +1567,6 @@ html[data-ui-mode='light'] {
 }
 
 @layer base {
-  :where([class~='transition'], [class*='transition-']):not([class*='transition-none']) {
-    transition-property: transform, opacity !important;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 1ms !important;

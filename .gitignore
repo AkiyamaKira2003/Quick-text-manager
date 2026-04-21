@@ -23,3 +23,4 @@ python/__pycache__/
 .env*.local
 .DS_Store
 launcher/launcher.config.json
+.gitnexus
