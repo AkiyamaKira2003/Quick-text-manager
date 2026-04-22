@@ -46,6 +46,7 @@
     },
     "files": [
       "electron/**/*",
+      "lib/**/*.js",
       "public/**/*",
       "package.json"
     ],
