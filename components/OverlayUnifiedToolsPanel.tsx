@@ -218,6 +218,7 @@ const QUICK_ADD_BAR_MAX_WIDTH = 520
 const QUICK_ADD_BAR_HEIGHT = 56
 const PANEL_COLLAPSED_HEADER_HEIGHT = 50
 const VIEWPORT_RESIZE_PERSIST_DEBOUNCE_MS = 120
+const VIEWPORT_RESIZE_FRAME_INTERVAL_MS = 34
 
 const GOOGLE_LENS_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
@@ -446,6 +447,7 @@ export default function OverlayUnifiedToolsPanel({
   const quickAddDragFrameRef = useRef<number | null>(null)
   const quickAddPendingRef = useRef<{ clientX: number; clientY: number } | null>(null)
   const viewportResizeFrameRef = useRef<number | null>(null)
+  const viewportResizeLastApplyAtRef = useRef(0)
   const viewportPersistTimerRef = useRef<number | null>(null)
   const pendingViewportPatchRef = useRef<Partial<Settings>>({})
 
@@ -608,6 +610,13 @@ export default function OverlayUnifiedToolsPanel({
       },
     ]
   }, [settings.items, settings.selectedIndex])
+
+  const visiblePlayTextContextRows = useMemo<PlayTextContextRow[]>(() => {
+    return playTextContextRows.filter((row) => {
+      if (row.role === 'current') return true
+      return row.text.length > 0 || row.note.length > 0
+    })
+  }, [playTextContextRows])
 
   const prevContextIndexRef = useRef<number>(Math.max(0, settings.selectedIndex))
   const [contextAnimationTick, setContextAnimationTick] = useState(0)
@@ -789,6 +798,7 @@ export default function OverlayUnifiedToolsPanel({
         window.cancelAnimationFrame(viewportResizeFrameRef.current)
         viewportResizeFrameRef.current = null
       }
+      viewportResizeLastApplyAtRef.current = 0
       if (viewportPersistTimerRef.current !== null) {
         window.clearTimeout(viewportPersistTimerRef.current)
         viewportPersistTimerRef.current = null
@@ -952,12 +962,21 @@ export default function OverlayUnifiedToolsPanel({
       }
     }
 
+    const runViewportResizeFrame = () => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const elapsed = now - viewportResizeLastApplyAtRef.current
+      if (elapsed < VIEWPORT_RESIZE_FRAME_INTERVAL_MS) {
+        viewportResizeFrameRef.current = window.requestAnimationFrame(runViewportResizeFrame)
+        return
+      }
+      viewportResizeFrameRef.current = null
+      viewportResizeLastApplyAtRef.current = now
+      applyViewportResize()
+    }
+
     const handleResize = () => {
       if (viewportResizeFrameRef.current !== null) return
-      viewportResizeFrameRef.current = window.requestAnimationFrame(() => {
-        viewportResizeFrameRef.current = null
-        applyViewportResize()
-      })
+      viewportResizeFrameRef.current = window.requestAnimationFrame(runViewportResizeFrame)
     }
 
     handleResize()
@@ -4120,7 +4139,7 @@ export default function OverlayUnifiedToolsPanel({
                     key={`context-${contextAnimationTick}-${settings.selectedIndex}`}
                     className={`qt-play-context-stack qt-play-context-stack-${contextAnimationDirection} space-y-2`}
                   >
-                    {playTextContextRows.map((row) => {
+                    {visiblePlayTextContextRows.map((row) => {
                       const baseTextSize = Math.max(16, Math.round(playTextSize))
                       const roleScale = row.role === 'current' ? 1 : 0.78
                       const rowTextSize = Math.max(12, Math.round(baseTextSize * roleScale))

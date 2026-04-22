@@ -9,13 +9,16 @@ const lensParserCore = require('../lib/lens-parser-core')
 const fsp = fs.promises
 
 let cachedAutoUpdater = undefined
+let cachedAutoUpdaterError = ''
 function resolveAutoUpdater() {
   if (cachedAutoUpdater !== undefined) return cachedAutoUpdater
+  cachedAutoUpdaterError = ''
   try {
     const module = require('electron-updater')
     cachedAutoUpdater = module?.autoUpdater || null
-  } catch {
+  } catch (error) {
     cachedAutoUpdater = null
+    cachedAutoUpdaterError = error instanceof Error ? error.message : String(error || 'Unknown updater load error')
   }
   return cachedAutoUpdater
 }
@@ -620,10 +623,11 @@ function ensureAutoUpdaterInitialized() {
 
   const autoUpdater = resolveAutoUpdater()
   if (!autoUpdater) {
+    const reason = cachedAutoUpdaterError || 'electron-updater is not available.'
     setUpdateRuntimePatch({
       supported: false,
       stage: 'unsupported',
-      error: 'electron-updater is not available.',
+      error: reason,
       checkedAt: Date.now(),
     })
     return false
@@ -730,9 +734,10 @@ async function checkForAppUpdates(trigger = 'manual') {
 
   const autoUpdater = resolveAutoUpdater()
   if (!autoUpdater) {
+    const reason = cachedAutoUpdaterError || 'electron-updater is not available.'
     return setUpdateRuntimePatch({
       stage: 'unsupported',
-      error: 'electron-updater is not available.',
+      error: reason,
       checkedAt: Date.now(),
     })
   }
@@ -6506,6 +6511,8 @@ function cleanupRuntime() {
   updateRuntime = createDefaultUpdateRuntime()
   updateCheckPromise = null
   autoUpdaterInitialized = false
+  cachedAutoUpdater = undefined
+  cachedAutoUpdaterError = ''
   profilingState = createDefaultProfilingState()
   profilingCurrentTrace = null
   profilingLogWritePromise = Promise.resolve()
