@@ -25,8 +25,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows app (installer + unpacked)
-        run: npm run dist:release
+      - name: Build Windows installer (.exe)
+        run: npm run dist:win
+
+      - name: Preserve installer artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
+          Copy-Item -Path dist\*.exe -Destination dist-artifacts -Force
+
+      - name: Build Windows unpacked app
+        run: npm run dist:folder
 
       - name: Build launcher zip + latest.json
         shell: pwsh
@@ -40,4 +49,4 @@ jobs:
           files: |
             dist/QuickText-win-x64.zip
             dist/latest.json
-            dist/*.exe
+            dist-artifacts/*.exe
