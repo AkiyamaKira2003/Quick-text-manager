@@ -1,5 +1,6 @@
 param(
   [string]$BaseUrl = '',
+  [string]$DistRoot = 'dist',
   [string]$ZipName = 'QuickText-win-x64.zip',
   [string]$Channel = 'stable',
   [string]$EntryExe = 'QuickText.exe'
@@ -21,13 +22,19 @@ if (-not $BaseUrl) {
   throw 'Missing base URL. Pass -BaseUrl or set QT_RELEASE_BASE_URL.'
 }
 
-$distRoot = Join-Path $repoRoot 'dist'
+$resolvedDistRoot = if ([System.IO.Path]::IsPathRooted($DistRoot)) {
+  $DistRoot
+} else {
+  Join-Path $repoRoot $DistRoot
+}
+
+$distRoot = $resolvedDistRoot
 $unpackedRoot = Join-Path $distRoot 'win-unpacked'
 $zipPath = Join-Path $distRoot $ZipName
 $manifestPath = Join-Path $distRoot 'latest.json'
 
 if (-not (Test-Path -LiteralPath $unpackedRoot)) {
-  throw 'Missing dist/win-unpacked. Run `npm run dist:folder` first.'
+  throw "Missing $unpackedRoot. Run the Windows packaging build first."
 }
 
 Write-Host "[release] Building zip: $zipPath"

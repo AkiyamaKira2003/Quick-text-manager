@@ -12,6 +12,8 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    env:
+      DIST_ROOT: dist-release
 
     steps:
       - name: Checkout
@@ -40,7 +42,7 @@ jobs:
           $buildSucceeded = $false
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             Write-Host "Build attempt $attempt/$maxAttempts"
-            $attemptOutput = "dist-attempt-$attempt"
+            $attemptOutput = "${{ env.DIST_ROOT }}-attempt-$attempt"
 
             # Isolate each attempt output to avoid reusing locked win-unpacked files.
             if (Test-Path -LiteralPath $attemptOutput) {
@@ -49,9 +51,7 @@ jobs:
 
             npx electron-builder --win nsis --config.directories.output=$attemptOutput
             if ($LASTEXITCODE -eq 0) {
-              Remove-Item -LiteralPath 'dist' -Recurse -Force -ErrorAction SilentlyContinue
-              New-Item -ItemType Directory -Path 'dist' -Force | Out-Null
-              Copy-Item -Path (Join-Path $attemptOutput '*') -Destination 'dist' -Recurse -Force
+              "DIST_ROOT=$attemptOutput" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               $buildSucceeded = $true
               break
             }
@@ -67,12 +67,12 @@ jobs:
         shell: pwsh
         run: |
           $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
-          & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
+          & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl -DistRoot "${{ env.DIST_ROOT }}"
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/QuickText-Setup-*.exe
-            dist/QuickText-win-x64.zip
-            dist/latest.json
+            ${{ env.DIST_ROOT }}/QuickText-Setup-*.exe
+            ${{ env.DIST_ROOT }}/QuickText-win-x64.zip
+            ${{ env.DIST_ROOT }}/latest.json
