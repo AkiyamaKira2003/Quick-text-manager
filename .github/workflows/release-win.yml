@@ -29,25 +29,38 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
+          $env:QT_NEXT_DIST_DIR = '.next-build'
+          npx next build
+          node scripts/prepare-standalone.cjs
+          node scripts/prepare-win-icon.cjs
+          npm run build:native-core
+
           $maxAttempts = 3
+          $buildSucceeded = $false
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             Write-Host "Build attempt $attempt/$maxAttempts"
+            $attemptOutput = "dist-attempt-$attempt"
 
-            # Electron builder can fail on transient file locks (app.asar) on Windows runners.
-            if (Test-Path -LiteralPath 'dist/win-unpacked') {
-              Remove-Item -LiteralPath 'dist/win-unpacked' -Recurse -Force -ErrorAction SilentlyContinue
+            # Isolate each attempt output to avoid reusing locked win-unpacked files.
+            if (Test-Path -LiteralPath $attemptOutput) {
+              Remove-Item -LiteralPath $attemptOutput -Recurse -Force -ErrorAction SilentlyContinue
             }
 
-            npm run dist:win
+            npx electron-builder --win nsis --config.directories.output=$attemptOutput
             if ($LASTEXITCODE -eq 0) {
+              Remove-Item -LiteralPath 'dist' -Recurse -Force -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path 'dist' -Force | Out-Null
+              Copy-Item -Path (Join-Path $attemptOutput '*') -Destination 'dist' -Recurse -Force
+              $buildSucceeded = $true
               break
             }
 
-            if ($attempt -eq $maxAttempts) {
-              throw "dist:win failed after $maxAttempts attempts."
-            }
-
             Start-Sleep -Seconds (10 * $attempt)
+          }
+
+          if (-not $buildSucceeded) {
+            throw "Installer build failed after $maxAttempts attempts."
           }
 
       - name: Build launcher zip + latest.json
