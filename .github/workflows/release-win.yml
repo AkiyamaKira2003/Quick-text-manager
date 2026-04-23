@@ -12,8 +12,6 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
-    env:
-      DIST_ROOT: dist-release
 
     steps:
       - name: Checkout
@@ -27,31 +25,50 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows installer package
+      - name: Build Windows unpacked app
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $env:QT_NEXT_DIST_DIR = '.next-build'
-          npx next build
-          node scripts/prepare-standalone.cjs
-          node scripts/prepare-win-icon.cjs
-          npm run build:native-core
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Unpacked build attempt $attempt/$maxAttempts"
+
+            if (Test-Path -LiteralPath 'dist/win-unpacked') {
+              Remove-Item -LiteralPath 'dist/win-unpacked' -Recurse -Force -ErrorAction SilentlyContinue
+            }
+
+            npm run dist:folder
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+
+            if ($attempt -eq $maxAttempts) {
+              throw "dist:folder failed after $maxAttempts attempts."
+            }
+
+            Start-Sleep -Seconds (10 * $attempt)
+          }
+
+      - name: Build Windows setup installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
 
           $maxAttempts = 3
           $buildSucceeded = $false
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            Write-Host "Build attempt $attempt/$maxAttempts"
-            $attemptOutput = "${{ env.DIST_ROOT }}-attempt-$attempt"
+            Write-Host "Installer build attempt $attempt/$maxAttempts"
+            $attemptOutput = "dist-installer-attempt-$attempt"
 
-            # Isolate each attempt output to avoid reusing locked win-unpacked files.
             if (Test-Path -LiteralPath $attemptOutput) {
               Remove-Item -LiteralPath $attemptOutput -Recurse -Force -ErrorAction SilentlyContinue
             }
 
-            npx electron-builder --win nsis --config.directories.output=$attemptOutput
+            npx electron-builder --win nsis --prepackaged dist/win-unpacked --config.directories.output=$attemptOutput
             if ($LASTEXITCODE -eq 0) {
-              "DIST_ROOT=$attemptOutput" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              Copy-Item -Path (Join-Path $attemptOutput 'QuickText-Setup-*.exe') -Destination 'dist' -Force
+              Copy-Item -Path (Join-Path $attemptOutput 'QuickText-Setup-*.exe.blockmap') -Destination 'dist' -Force -ErrorAction SilentlyContinue
               $buildSucceeded = $true
               break
             }
@@ -67,12 +84,12 @@ jobs:
         shell: pwsh
         run: |
           $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
-          & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl -DistRoot "${{ env.DIST_ROOT }}"
+          & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ env.DIST_ROOT }}/QuickText-Setup-*.exe
-            ${{ env.DIST_ROOT }}/QuickText-win-x64.zip
-            ${{ env.DIST_ROOT }}/latest.json
+            dist/QuickText-Setup-*.exe
+            dist/QuickText-win-x64.zip
+            dist/latest.json
