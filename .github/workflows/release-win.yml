@@ -32,14 +32,14 @@ jobs:
         shell: pwsh
         run: |
           $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
+          & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
 
       - name: Build launcher EXE
         shell: pwsh
         run: |
-          Install-PackageProvider -Name NuGet -Scope CurrentUser -Force -ForceBootstrap
-          Install-Module ps2exe -Scope CurrentUser -Force -AllowClobber
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-exe.ps1 -OutputPath dist/QuickTextLauncher.exe
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          & ./scripts/build-launcher-exe.ps1 -OutputPath dist/QuickTextLauncher.exe
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
