@@ -33,6 +33,7 @@
     "test:prod": "npm run build && npm run run:local",
     "dist:win": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:native-core && electron-builder --win nsis",
     "dist:folder": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:native-core && electron-builder --win dir",
+    "dist:release": "set QT_NEXT_DIST_DIR=.next-build&& next build && node scripts/prepare-standalone.cjs && node scripts/prepare-win-icon.cjs && npm run build:native-core && electron-builder --win nsis dir",
     "start": "next start",
     "lint": "eslint ."
   },
