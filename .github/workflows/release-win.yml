@@ -55,29 +55,75 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          $sourceUnpacked = 'dist/win-unpacked'
+          if (-not (Test-Path -LiteralPath $sourceUnpacked)) {
+            throw "Missing $sourceUnpacked. Unpacked build step must complete first."
+          }
+
           $maxAttempts = 3
           $buildSucceeded = $false
+          $lastFailure = ''
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             Write-Host "Installer build attempt $attempt/$maxAttempts"
             $attemptOutput = "dist-installer-attempt-$attempt"
+            $attemptSource = "dist-installer-source-$attempt"
 
             if (Test-Path -LiteralPath $attemptOutput) {
               Remove-Item -LiteralPath $attemptOutput -Recurse -Force -ErrorAction SilentlyContinue
             }
+            if (Test-Path -LiteralPath $attemptSource) {
+              Remove-Item -LiteralPath $attemptSource -Recurse -Force -ErrorAction SilentlyContinue
+            }
 
-            npx electron-builder --win nsis --prepackaged dist/win-unpacked --config.directories.output=$attemptOutput
-            if ($LASTEXITCODE -eq 0) {
-              Copy-Item -Path (Join-Path $attemptOutput 'QuickText-Setup-*.exe') -Destination 'dist' -Force
+            try {
+              New-Item -ItemType Directory -Path $attemptSource -Force | Out-Null
+              Copy-Item -Path (Join-Path $sourceUnpacked '*') -Destination $attemptSource -Recurse -Force
+            } catch {
+              $copyError = $_.Exception.Message
+              $lastFailure = "copy-failed: $copyError"
+              $escapedCopyError = $lastFailure.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Host "::warning::Installer attempt $attempt copy prepackaged source failed: $escapedCopyError"
+              Start-Sleep -Seconds (10 * $attempt)
+              continue
+            }
+
+            $attemptLogs = New-Object System.Collections.Generic.List[string]
+            & npx electron-builder --win nsis --prepackaged $attemptSource --config.directories.output=$attemptOutput 2>&1 | ForEach-Object {
+              $line = [string]$_
+              $attemptLogs.Add($line)
+              Write-Host $line
+            }
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+              $setupExe = Get-ChildItem -Path (Join-Path $attemptOutput 'QuickText-Setup-*.exe') -File -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($null -eq $setupExe) {
+                $lastFailure = "installer-missing: no QuickText-Setup-*.exe in $attemptOutput"
+                $escapedMissing = $lastFailure.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Host "::warning::Installer attempt $attempt succeeded but setup file was not found: $escapedMissing"
+                Start-Sleep -Seconds (10 * $attempt)
+                continue
+              }
+
+              Copy-Item -LiteralPath $setupExe.FullName -Destination 'dist' -Force
               Copy-Item -Path (Join-Path $attemptOutput 'QuickText-Setup-*.exe.blockmap') -Destination 'dist' -Force -ErrorAction SilentlyContinue
               $buildSucceeded = $true
               break
             }
 
+            $tail = ($attemptLogs | Select-Object -Last 30) -join ' || '
+            if (-not $tail) {
+              $tail = "electron-builder exited with code $exitCode and no log output captured"
+            }
+            $lastFailure = $tail
+            $escapedTail = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::warning::Installer attempt $attempt failed (exit $exitCode): $escapedTail"
+
             Start-Sleep -Seconds (10 * $attempt)
           }
 
           if (-not $buildSucceeded) {
-            throw "Installer build failed after $maxAttempts attempts."
+            throw "Installer build failed after $maxAttempts attempts. Last failure: $lastFailure"
           }
 
       - name: Build launcher zip + latest.json
