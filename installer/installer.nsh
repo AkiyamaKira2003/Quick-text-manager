@@ -1,11 +1,9 @@
 !macro customHeader
   !define MUI_ABORTWARNING
-  !define MUI_HEADERIMAGE
-  !define MUI_HEADERIMAGE_RIGHT
-  !define MUI_WELCOMEPAGE_TITLE "Quick Text Setup"
-  !define MUI_WELCOMEPAGE_TEXT "This wizard will install Quick Text on your computer."
-  !define MUI_FINISHPAGE_TITLE "Quick Text is ready"
-  !define MUI_FINISHPAGE_TEXT "Setup is complete. You can launch Quick Text right away."
+  !define MUI_WELCOMEPAGE_TITLE "Welcome to Quick Text"
+  !define MUI_WELCOMEPAGE_TEXT "A focused setup for your snippet workflow. Install in less than a minute and launch instantly."
+  !define MUI_FINISHPAGE_TITLE "Quick Text is installed"
+  !define MUI_FINISHPAGE_TEXT "Setup is complete. Start Quick Text now to manage and trigger snippets right away."
 !macroend
 
 !macro preInit

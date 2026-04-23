@@ -1,6 +1,6 @@
 {
   "name": "quicktext",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Quick Text desktop app for instant snippets and productivity overlays.",
   "author": "Kira",
   "homepage": "https://github.com/AkiyamaKira2003/Quick-text-manager",
@@ -86,6 +86,7 @@
       "installerIcon": "build/installer.ico",
       "uninstallerIcon": "build/uninstaller.ico",
       "installerHeaderIcon": "build/installerHeader.ico",
+      "installerHeader": "build/installerHeader.bmp",
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/uninstallerSidebar.bmp",
       "license": "installer/LICENSE-setup.txt",
