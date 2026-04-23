@@ -25,15 +25,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows installer (.exe)
-        run: npm run dist:win
-
-      - name: Preserve installer artifact
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
-          Copy-Item -Path dist\*.exe -Destination dist-artifacts -Force
-
       - name: Build Windows unpacked app
         run: npm run dist:folder
 
@@ -43,10 +34,17 @@ jobs:
           $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
 
+      - name: Build launcher EXE
+        shell: pwsh
+        run: |
+          Install-PackageProvider -Name NuGet -Scope CurrentUser -Force -ForceBootstrap
+          Install-Module ps2exe -Scope CurrentUser -Force -AllowClobber
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher-exe.ps1 -OutputPath dist/QuickTextLauncher.exe
+
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/QuickText-win-x64.zip
             dist/latest.json
-            dist-artifacts/*.exe
+            dist/QuickTextLauncher.exe
