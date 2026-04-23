@@ -26,7 +26,29 @@ jobs:
         run: npm install
 
       - name: Build Windows unpacked app
-        run: npm run dist:folder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Build attempt $attempt/$maxAttempts"
+
+            # Electron builder can fail on transient file locks (app.asar) on Windows runners.
+            if (Test-Path -LiteralPath 'dist/win-unpacked') {
+              Remove-Item -LiteralPath 'dist/win-unpacked' -Recurse -Force -ErrorAction SilentlyContinue
+            }
+
+            npm run dist:folder
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+
+            if ($attempt -eq $maxAttempts) {
+              throw "dist:folder failed after $maxAttempts attempts."
+            }
+
+            Start-Sleep -Seconds (10 * $attempt)
+          }
 
       - name: Build launcher zip + latest.json
         shell: pwsh
