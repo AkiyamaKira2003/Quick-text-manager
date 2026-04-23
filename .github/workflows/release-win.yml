@@ -88,7 +88,7 @@ jobs:
             }
 
             $attemptLogs = New-Object System.Collections.Generic.List[string]
-            & npx electron-builder --win nsis --prepackaged $attemptSource --config.directories.output=$attemptOutput 2>&1 | ForEach-Object {
+            & npx electron-builder --win nsis --publish never --prepackaged $attemptSource --config.directories.output=$attemptOutput 2>&1 | ForEach-Object {
               $line = [string]$_
               $attemptLogs.Add($line)
               Write-Host $line
