@@ -1,7 +1,9 @@
 {
   "name": "quicktext",
   "version": "2.0.0",
+  "description": "Quick Text desktop app for instant snippets and productivity overlays.",
   "author": "Kira",
+  "homepage": "https://github.com/AkiyamaKira2003/Quick-text-manager",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -70,8 +72,25 @@
       ]
     },
     "nsis": {
+      "artifactName": "QuickText-Setup-${version}.${ext}",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Quick Text",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "Quick Text",
+      "installerIcon": "build/installer.ico",
+      "uninstallerIcon": "build/uninstaller.ico",
+      "installerHeaderIcon": "build/installerHeader.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "license": "installer/LICENSE-setup.txt",
+      "include": "installer/installer.nsh",
+      "warningsAsErrors": false
     }
   },
   "dependencies": {

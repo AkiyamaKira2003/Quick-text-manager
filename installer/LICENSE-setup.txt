@@ -1,0 +1,10 @@
+Quick Text Desktop Software License
+Copyright (c) 2026 Kira
+
+1. This installer provides the Quick Text desktop application and related runtime files.
+2. You may install and use Quick Text for personal or internal business productivity use.
+3. You may not reverse engineer, resell, or redistribute modified installer binaries without permission.
+4. The software is provided "as is" without warranties of any kind.
+5. The author is not liable for indirect or consequential damages.
+
+By continuing with this setup, you acknowledge and accept these terms.

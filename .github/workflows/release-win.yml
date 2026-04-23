@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows unpacked app
+      - name: Build Windows installer package
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -38,13 +38,13 @@ jobs:
               Remove-Item -LiteralPath 'dist/win-unpacked' -Recurse -Force -ErrorAction SilentlyContinue
             }
 
-            npm run dist:folder
+            npm run dist:win
             if ($LASTEXITCODE -eq 0) {
               break
             }
 
             if ($attempt -eq $maxAttempts) {
-              throw "dist:folder failed after $maxAttempts attempts."
+              throw "dist:win failed after $maxAttempts attempts."
             }
 
             Start-Sleep -Seconds (10 * $attempt)
@@ -56,17 +56,10 @@ jobs:
           $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
           & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
 
-      - name: Build launcher EXE
-        shell: pwsh
-        run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
-          & ./scripts/build-launcher-exe.ps1 -OutputPath dist/QuickTextLauncher.exe
-
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/QuickText-Setup-*.exe
             dist/QuickText-win-x64.zip
             dist/latest.json
-            dist/QuickTextLauncher.exe
