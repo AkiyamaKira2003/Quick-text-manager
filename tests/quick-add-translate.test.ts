@@ -9,7 +9,7 @@ test('quick-add translate preserves uppercase tokens in translated output', asyn
     new Response(
       JSON.stringify({
         responseData: {
-          translatedText: '안녕 __QTK_TOKEN_0__ 그리고 __QTK_TOKEN_1__',
+          translatedText: '안녕 QTKX0XQTK 그리고 qtkx1xqtk',
         },
       }),
       { status: 200 },
@@ -33,6 +33,40 @@ test('quick-add translate preserves uppercase tokens in translated output', asyn
     assert.equal(payload.ok, true)
     assert.equal(payload.usedFallback, false)
     assert.equal(payload.translatedText, '안녕 NPC 그리고 KINGJONG')
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
+test('quick-add translate restores token-like provider artifacts', async () => {
+  const originalFetch = global.fetch
+  global.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        responseData: {
+          translatedText: '안녕 QTK TOKEN 0 그리고 __QTK_TOKEN_1__',
+        },
+      }),
+      { status: 200 },
+    )
+
+  try {
+    const request = new Request('http://localhost/api/quick-add-translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: 'xin chao TT va NPC',
+        sourceLang: 'vi',
+        targetLang: 'ko',
+      }),
+    })
+
+    const response = await POST(request)
+    assert.equal(response.status, 200)
+
+    const payload = (await response.json()) as { ok: boolean; translatedText: string }
+    assert.equal(payload.ok, true)
+    assert.equal(payload.translatedText, '안녕 TT 그리고 NPC')
   } finally {
     global.fetch = originalFetch
   }

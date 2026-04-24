@@ -5,8 +5,8 @@ const REQUEST_TIMEOUT_MS = 9000
 const MAX_TEXT_LENGTH = 1200
 const TRANSLATE_API_BASE = 'https://api.mymemory.translated.net/get'
 const UPPERCASE_TOKEN_PATTERN = /\b[A-Z][A-Z0-9._-]{1,}\b/g
-const TOKEN_PREFIX = '__QTK_TOKEN_'
-const TOKEN_SUFFIX = '__'
+const TOKEN_PREFIX = 'QTKX'
+const TOKEN_SUFFIX = 'XQTK'
 
 type TranslateInput = {
   text: string
@@ -95,12 +95,25 @@ function protectUppercaseTokens(text: string) {
 
 function restoreProtectedTokens(text: string, tokens: string[]) {
   if (tokens.length === 0) return text
-  const placeholderPattern = new RegExp(`${TOKEN_PREFIX}(\\d+)${TOKEN_SUFFIX}`, 'g')
-  return text.replace(placeholderPattern, (raw, indexText) => {
+  const placeholderPattern = new RegExp(`${escapeRegex(TOKEN_PREFIX)}\\s*(\\d+)\\s*${escapeRegex(TOKEN_SUFFIX)}`, 'gi')
+  const legacyPlaceholderPattern = /_*QTK\s*[_\s-]*(?:TOKEN|\uD1A0\uD070)\s*[_\s-]*(\d+)_*/gi
+  return replaceIndexedPlaceholders(text, placeholderPattern, tokens).replace(legacyPlaceholderPattern, (raw, indexText) => {
     const tokenIndex = Number.parseInt(indexText, 10)
     if (!Number.isFinite(tokenIndex) || tokenIndex < 0 || tokenIndex >= tokens.length) return raw
     return tokens[tokenIndex]
   })
+}
+
+function replaceIndexedPlaceholders(text: string, pattern: RegExp, tokens: string[]) {
+  return text.replace(pattern, (raw, indexText) => {
+    const tokenIndex = Number.parseInt(indexText, 10)
+    if (!Number.isFinite(tokenIndex) || tokenIndex < 0 || tokenIndex >= tokens.length) return raw
+    return tokens[tokenIndex]
+  })
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 async function requestTranslate(input: TranslateInput) {
