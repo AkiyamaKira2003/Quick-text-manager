@@ -9,6 +9,8 @@ node_modules/
 .next-*/
 dist/
 build/
+bin/
+obj/
 .cache/
 .turbo/
 *.tsbuildinfo
@@ -24,3 +26,4 @@ python/__pycache__/
 .DS_Store
 launcher/launcher.config.json
 .gitnexus
+installer/bootstrapper/Resources/QuickTextSetupEngine.exe

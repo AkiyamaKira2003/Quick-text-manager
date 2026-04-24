@@ -22,11 +22,29 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Install dependencies
         run: npm install
 
+      - name: Install Python bundle dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r python/requirements.txt pyinstaller
+
       - name: Build Windows unpacked app
         shell: pwsh
+        env:
+          QT_SKIP_PYTHON_BUNDLE_INSTALL: '1'
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -132,10 +150,16 @@ jobs:
           $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
           & ./scripts/build-launcher-release.ps1 -BaseUrl $baseUrl
 
+      - name: Build Kira LC custom setup
+        shell: pwsh
+        run: |
+          & ./scripts/build-kira-lc-setup.ps1
+
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/KiraLC-Setup-*.exe
             dist/QuickText-Setup-*.exe
             dist/QuickText-win-x64.zip
             dist/latest.json

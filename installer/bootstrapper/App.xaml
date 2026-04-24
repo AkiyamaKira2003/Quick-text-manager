@@ -1,0 +1,9 @@
+<Application x:Class="QuickText.Setup.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <DropShadowEffect x:Key="NeonCyanShadow" Color="#55DFFF" BlurRadius="28" ShadowDepth="0" Opacity="0.72" />
+    <DropShadowEffect x:Key="NeonPinkShadow" Color="#FF4DA6" BlurRadius="32" ShadowDepth="0" Opacity="0.64" />
+  </Application.Resources>
+</Application>

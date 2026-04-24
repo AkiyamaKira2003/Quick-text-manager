@@ -1977,7 +1977,7 @@ function resolvePreferredInputBackend() {
   if (INPUT_BACKEND_ENV === INPUT_BACKEND_NATIVE || INPUT_BACKEND_ENV === INPUT_BACKEND_PYTHON) {
     return INPUT_BACKEND_ENV
   }
-  return INPUT_BACKEND_PYTHON
+  return INPUT_BACKEND_NATIVE
 }
 
 function resolveNativeInputCorePath() {
@@ -2018,20 +2018,25 @@ function ensureInputBackendReady() {
   if (inputBackendName) return inputBackendName
   const preferred = resolvePreferredInputBackend()
 
-  if (preferred === INPUT_BACKEND_PYTHON) {
-    inputBackendName = INPUT_BACKEND_PYTHON
-    return inputBackendName
+  if (preferred === INPUT_BACKEND_NATIVE) {
+    try {
+      tryLoadNativeInputCore()
+      inputBackendName = INPUT_BACKEND_NATIVE
+      return inputBackendName
+    } catch (error) {
+      safeConsoleError('[input-backend] native unavailable:', error)
+      const message = error instanceof Error ? error.message : 'Native input core failed to initialize.'
+      if (INPUT_BACKEND_ENV === INPUT_BACKEND_NATIVE) {
+        throw new Error(`${message} Build native core with "npm run build:native-core" or set QT_INPUT_BACKEND=python for fallback.`)
+      }
+      safeConsoleInfo('[input-backend] falling back to python backend.')
+      inputBackendName = INPUT_BACKEND_PYTHON
+      return inputBackendName
+    }
   }
 
-  try {
-    tryLoadNativeInputCore()
-    inputBackendName = INPUT_BACKEND_NATIVE
-    return inputBackendName
-  } catch (error) {
-    safeConsoleError('[input-backend] native unavailable:', error)
-    const message = error instanceof Error ? error.message : 'Native input core failed to initialize.'
-    throw new Error(`${message} Build native core with "npm run build:native-core" or set QT_INPUT_BACKEND=python for fallback.`)
-  }
+  inputBackendName = INPUT_BACKEND_PYTHON
+  return inputBackendName
 }
 
 function isNativeInputBackendActive() {
@@ -5460,8 +5465,10 @@ function schedulePersistMainBounds() {
 }
 
 function shouldUseElectronHotkeyFallback() {
-  // Python hotkey pipeline is the primary source to avoid repeated keydown auto-repeat loops.
-  return FORCE_ELECTRON_HOTKEY_FALLBACK
+  if (FORCE_ELECTRON_HOTKEY_FALLBACK) return true
+  // If python backend is selected but service is down, keep hotkeys alive via Electron fallback.
+  const backend = inputBackendName || resolvePreferredInputBackend()
+  return backend === INPUT_BACKEND_PYTHON && !managedPythonHealthOk
 }
 
 function unregisterElectronHotkeys() {
