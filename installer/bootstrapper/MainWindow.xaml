@@ -1,25 +1,28 @@
 <Window x:Class="QuickText.Setup.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Kira LC Setup"
-        Width="1180"
-        Height="720"
+        Title="Kira LC Client"
+        Width="1652"
+        Height="928"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="NoResize"
-        Background="#050812">
+        AllowsTransparency="True"
+        Background="Transparent"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
   <Window.Resources>
-    <LinearGradientBrush x:Key="PanelGlow" StartPoint="0,0" EndPoint="1,1">
-      <GradientStop Color="#122C58" Offset="0" />
-      <GradientStop Color="#0A1024" Offset="0.46" />
-      <GradientStop Color="#2A0D24" Offset="1" />
+    <LinearGradientBrush x:Key="ActiveNavBrush" StartPoint="0,0" EndPoint="1,0">
+      <GradientStop Color="#59FF4655" Offset="0" />
+      <GradientStop Color="#14FF4655" Offset="1" />
     </LinearGradientBrush>
+
     <Style x:Key="ChromeButton" TargetType="Button">
-      <Setter Property="Foreground" Value="#C8F6FF" />
+      <Setter Property="Foreground" Value="#F2F2F2" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="FontFamily" Value="Bahnschrift" />
-      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontSize" Value="15" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
@@ -31,247 +34,428 @@
         </Setter.Value>
       </Setter>
     </Style>
+
+    <Style x:Key="NakedButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <ContentPresenter />
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ToolCard" TargetType="Border">
+      <Setter Property="Width" Value="320" />
+      <Setter Property="Height" Value="120" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="#13FFFFFF" />
+      <Setter Property="BorderBrush" Value="#17FFFFFF" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="22" />
+    </Style>
   </Window.Resources>
 
-  <Border BorderBrush="#305BFF" BorderThickness="1" Background="#050812">
-    <Grid MouseLeftButtonDown="DragWindow">
+  <Border x:Name="ShellBorder"
+          Background="#080C0F"
+          BorderBrush="#24FFFFFF"
+          BorderThickness="1"
+          CornerRadius="18"
+          ClipToBounds="True">
+    <Grid x:Name="ShellContent" MouseLeftButtonDown="DragWindow" ClipToBounds="True">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="620" />
-        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="88" />
+        <ColumnDefinition Width="1228" />
+        <ColumnDefinition Width="336" />
       </Grid.ColumnDefinitions>
 
-      <Image Grid.ColumnSpan="2"
-             Source="Assets/install-hero.png"
-             Stretch="UniformToFill"
-             Opacity="0.18" />
-      <Image Grid.ColumnSpan="2"
+      <Image Grid.ColumnSpan="3"
              Source="Assets/noise-overlay.png"
              Stretch="UniformToFill"
-             Opacity="0.08" />
-      <Rectangle Grid.ColumnSpan="2">
-        <Rectangle.Fill>
-          <RadialGradientBrush Center="0.78,0.46" GradientOrigin="0.78,0.46" RadiusX="0.78" RadiusY="0.72">
-            <GradientStop Color="#221D55FF" Offset="0" />
-            <GradientStop Color="#BB050812" Offset="0.62" />
-            <GradientStop Color="#F4050812" Offset="1" />
-          </RadialGradientBrush>
-        </Rectangle.Fill>
-      </Rectangle>
+             Opacity="0.16"
+             IsHitTestVisible="False" />
 
       <StackPanel Orientation="Horizontal"
                   HorizontalAlignment="Right"
                   VerticalAlignment="Top"
-                  Margin="0,18,18,0"
-                  Grid.ColumnSpan="2">
+                  Margin="0,14,18,0"
+                  Panel.ZIndex="50"
+                  Grid.ColumnSpan="3">
         <Button Content="-" Width="38" Height="32" Style="{StaticResource ChromeButton}" Click="MinimizeWindow" />
         <Button Content="X" Width="38" Height="32" Style="{StaticResource ChromeButton}" Click="CloseWindow" />
       </StackPanel>
 
-      <Grid Grid.Column="0" Margin="54,48,32,44">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="*" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <StackPanel>
-          <Border Width="430"
-                  Height="176"
-                  HorizontalAlignment="Left"
-                  Background="#D9050812"
-                  BorderBrush="#394C69"
-                  BorderThickness="1"
-                  CornerRadius="22"
-                  ClipToBounds="True"
-                  Effect="{StaticResource NeonPinkShadow}">
-            <Grid>
-              <Image Source="Assets/kira-lc-logo.png"
-                     Stretch="UniformToFill"
-                     RenderOptions.BitmapScalingMode="HighQuality" />
-              <Rectangle>
-                <Rectangle.Fill>
-                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                    <GradientStop Color="#44050812" Offset="0" />
-                    <GradientStop Color="#00050812" Offset="0.52" />
-                    <GradientStop Color="#66050812" Offset="1" />
-                  </LinearGradientBrush>
-                </Rectangle.Fill>
-              </Rectangle>
-            </Grid>
+      <Border Grid.Column="0"
+              Background="#15171A"
+              BorderBrush="#10FFFFFF"
+              BorderThickness="0,0,1,0">
+        <Canvas Width="88" Height="928">
+          <Border Canvas.Left="24" Canvas.Top="32" Width="40" Height="40" CornerRadius="12" ClipToBounds="True" Background="#101318">
+            <Image Source="Assets/kira-lc-logo.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
           </Border>
-          <TextBlock Text="KIRA LC CLIENT"
-                     Margin="2,14,0,0"
-                     Foreground="#F5D7A5"
-                     FontFamily="Bahnschrift"
-                     FontSize="13"
-                     FontWeight="Bold" />
-          <TextBlock Text="QUICK TEXT MODULE"
-                     Margin="2,6,0,0"
-                     Foreground="#6EEBFF"
-                     FontFamily="Bahnschrift"
-                     FontSize="13"
-                     FontWeight="Bold" />
-          <TextBlock Text="Cài Quick Text qua launcher riêng"
-                     Margin="0,8,0,0"
-                     Foreground="#F7FCFF"
-                     FontFamily="Bahnschrift"
-                     FontSize="42"
-                     FontWeight="Bold"
-                     TextWrapping="Wrap"
-                     LineHeight="46" />
-          <TextBlock Text="Kira LC là shell cài đặt kiểu game client. Quick Text là app module bên trong, được đóng gói cùng runtime, hotkey backend và Python service."
-                     Margin="0,18,18,0"
-                     Foreground="#B9C9DE"
-                     FontFamily="Segoe UI"
-                     FontSize="16"
-                     TextWrapping="Wrap"
-                     LineHeight="24" />
-        </StackPanel>
 
-        <Border Grid.Row="1"
-                Margin="0,36,0,0"
-                Padding="22"
-                VerticalAlignment="Top"
-                Background="#9A07101F"
-                BorderBrush="#263F6D"
-                BorderThickness="1"
-                CornerRadius="24">
-          <StackPanel>
-            <TextBlock Text="Install directory"
-                       Foreground="#DDF9FF"
-                       FontFamily="Bahnschrift"
-                       FontSize="15"
-                       FontWeight="Bold" />
-            <Grid Margin="0,12,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="112" />
-              </Grid.ColumnDefinitions>
-              <TextBox x:Name="InstallPathBox"
-                       Height="42"
-                       Padding="14,10"
-                       Background="#E80B1326"
-                       BorderBrush="#355E9A"
-                       Foreground="#EEF9FF"
-                       CaretBrush="#68E8FF"
-                       FontFamily="Consolas"
-                       FontSize="13" />
-              <Button Grid.Column="1"
-                      Margin="12,0,0,0"
-                      Content="Browse"
-                      Height="42"
-                      Style="{StaticResource ChromeButton}"
-                      Background="#152B51"
-                      Click="BrowseInstallPath" />
-            </Grid>
+          <Button x:Name="HomeNavButton" Canvas.Left="16" Canvas.Top="220" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="SelectLocalSection" Tag="Home">
+            <Border CornerRadius="16" Background="#11FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1">
+              <TextBlock Text="H" Foreground="#B9C2CC" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Button>
 
-            <Grid Margin="0,22,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="82" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
+          <Button x:Name="ModulesNavButton" Canvas.Left="16" Canvas.Top="284" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="SelectLocalSection" Tag="Modules">
+            <Border CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1">
+              <TextBlock Text="M" Foreground="#B9C2CC" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Button>
 
-              <Border Width="68"
-                      Height="68"
-                      Background="#E807101F"
-                      BorderBrush="#2B77B8"
-                      BorderThickness="1"
-                      CornerRadius="34"
-                      HorizontalAlignment="Left"
-                      ClipToBounds="True">
-                <Image Source="Assets/progress-core.png"
-                       Stretch="UniformToFill"
-                       Opacity="0.9" />
-              </Border>
-
-              <StackPanel Grid.Column="1"
-                          VerticalAlignment="Center">
-                <TextBlock x:Name="StatusText"
-                           Text="Ready to install."
-                           Foreground="#8CEEFF"
-                           FontFamily="Bahnschrift"
-                           FontSize="14"
-                           FontWeight="Bold" />
-                <ProgressBar x:Name="InstallProgress"
-                             Height="10"
-                             Minimum="0"
-                             Maximum="100"
-                             Value="0"
-                             Margin="0,10,0,0"
-                             Foreground="#5EE7FF"
-                             Background="#10192B"
-                             BorderBrush="#2B4168" />
-                <TextBlock x:Name="ProgressText"
-                           Text="Waiting for confirmation"
-                           Margin="0,10,0,0"
-                           Foreground="#7D8BA3"
-                           FontFamily="Segoe UI"
-                           FontSize="13" />
+          <Button x:Name="QuickTextNavButton" Canvas.Left="0" Canvas.Top="360" Width="88" Height="80" Style="{StaticResource NakedButton}" Click="SelectQuickTextModule">
+            <Border Background="{StaticResource ActiveNavBrush}" BorderBrush="#FF4655" BorderThickness="4,0,0,0">
+              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="QT" Foreground="#FFFFFF" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" />
+                <TextBlock Text="TEXT" Foreground="#9EA8B3" FontFamily="Bahnschrift" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0" />
               </StackPanel>
-            </Grid>
-          </StackPanel>
-        </Border>
+            </Border>
+          </Button>
 
-        <Grid Grid.Row="2">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <TextBlock x:Name="StepText"
-                     Text="Engine: Kira LC UI + embedded Quick Text setup core"
-                     VerticalAlignment="Center"
-                     Foreground="#708098"
-                     FontFamily="Segoe UI"
-                     FontSize="13" />
-          <Button x:Name="InstallButton"
-                  Grid.Column="1"
-                  Content="Install Quick Text"
-                  MinWidth="196"
-                  Height="54"
-                  Padding="22,0"
-                  Background="#1FCFFF"
-                  Foreground="#03111C"
-                  FontFamily="Bahnschrift"
-                  FontSize="16"
-                  FontWeight="Bold"
-                  BorderBrush="#8BF5FF"
-                  Cursor="Hand"
-                  Click="InstallOrLaunch" />
-        </Grid>
-      </Grid>
+          <Button x:Name="MacroNavButton" Canvas.Left="16" Canvas.Top="462" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="ShowComingSoon" Tag="Macro for Games">
+            <Border CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1">
+              <TextBlock Text="MC" Foreground="#747D86" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Button>
 
-      <Grid Grid.Column="1" Margin="0,54,48,54">
-        <Border Background="{StaticResource PanelGlow}"
-                BorderBrush="#335BFF"
-                BorderThickness="1"
-                CornerRadius="34"
-                Effect="{StaticResource NeonPinkShadow}" />
-        <Image x:Name="HeroImage"
-               Source="Assets/install-hero.png"
+          <Button x:Name="BarotemNavButton" Canvas.Left="16" Canvas.Top="526" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="ShowComingSoon" Tag="Auto Notification Barotem">
+            <Border CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1">
+              <TextBlock Text="BN" Foreground="#747D86" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Button>
+
+          <Button Canvas.Left="16" Canvas.Top="830" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="BrowseInstallPath">
+            <Border CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1">
+              <TextBlock Text="SET" Foreground="#9EA8B3" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Button>
+        </Canvas>
+      </Border>
+
+      <Grid Grid.Column="1" Width="1228" Height="928" ClipToBounds="True">
+        <Image Source="Assets/quicktext-hero.png"
                Stretch="UniformToFill"
-               Margin="1"
-               ClipToBounds="True"
-               Opacity="0.96" />
-        <Image Source="Assets/frame-overlay.png"
-               Stretch="Fill"
-               Margin="18"
-               Opacity="0.58" />
+               RenderOptions.BitmapScalingMode="HighQuality" />
         <Rectangle>
           <Rectangle.Fill>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-              <GradientStop Color="#00000000" Offset="0" />
-              <GradientStop Color="#77050812" Offset="1" />
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+              <GradientStop Color="#F5080C0F" Offset="0" />
+              <GradientStop Color="#C2080C0F" Offset="0.38" />
+              <GradientStop Color="#33080C0F" Offset="0.75" />
             </LinearGradientBrush>
           </Rectangle.Fill>
         </Rectangle>
-        <Image x:Name="ModuleCardImage"
-               Source="Assets/quick-text-module-card.png"
-               Width="430"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Bottom"
-               Margin="0,0,0,34"
-               Effect="{StaticResource NeonCyanShadow}" />
+        <Rectangle>
+          <Rectangle.Fill>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+              <GradientStop Color="#0D080C0F" Offset="0" />
+              <GradientStop Color="#EA080C0F" Offset="1" />
+            </LinearGradientBrush>
+          </Rectangle.Fill>
+        </Rectangle>
+        <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.22" IsHitTestVisible="False" />
+
+        <Canvas Width="1228" Height="928">
+          <Image Canvas.Left="76"
+                 Canvas.Top="84"
+                 Width="680"
+                 Height="126"
+                 Source="Assets/header-strip.png"
+                 Stretch="Fill"
+                 Opacity="0.58"
+                 IsHitTestVisible="False" />
+          <TextBlock Canvas.Left="104" Canvas.Top="132"
+                     Text="K I R A  L C"
+                     Foreground="#FF4655"
+                     FontFamily="Bahnschrift"
+                     FontSize="18"
+                     FontWeight="Bold" />
+          <TextBlock Canvas.Left="102" Canvas.Top="168"
+                     Text="QUICK TEXT"
+                     Foreground="#F2F2F2"
+                     FontFamily="Bahnschrift"
+                     FontSize="58"
+                     FontWeight="Black" />
+          <TextBlock Canvas.Left="104" Canvas.Top="235"
+                     Width="560"
+                     Text="Create, organize, and trigger reusable text actions instantly. Built for fast workflow, gaming chats, trading messages, and automation-ready input."
+                     Foreground="#B8FFFFFF"
+                     FontFamily="Segoe UI"
+                     FontSize="17"
+                     LineHeight="26"
+                     TextWrapping="Wrap" />
+
+          <Button x:Name="InstallButton"
+                  Canvas.Left="102"
+                  Canvas.Top="292"
+                  Width="230"
+                  Height="70"
+                  Style="{StaticResource NakedButton}"
+                  Click="InstallOrLaunch">
+            <Grid Width="230" Height="70">
+              <Image Source="Assets/launch-button-bg.png" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality" />
+              <TextBlock x:Name="LaunchButtonLabel"
+                         Text="▶ LAUNCH"
+                         Foreground="#111111"
+                         FontFamily="Bahnschrift"
+                         FontSize="28"
+                         FontWeight="Black"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </Button>
+
+          <Button Canvas.Left="342"
+                  Canvas.Top="292"
+                  Width="70"
+                  Height="70"
+                  Style="{StaticResource NakedButton}"
+                  Click="BrowseInstallPath">
+            <Border CornerRadius="20" Background="#BEBE8C2A" BorderBrush="#55D6AA4F" BorderThickness="1">
+              <TextBlock Text="⌄" Foreground="#111111" FontFamily="Bahnschrift" FontSize="28" FontWeight="Black" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Button>
+
+          <Image Canvas.Left="86"
+                 Canvas.Top="382"
+                 Width="660"
+                 Height="156"
+                 Source="Assets/header-glow.png"
+                 Stretch="Fill"
+                 Opacity="0.72"
+                 IsHitTestVisible="False" />
+
+          <TextBlock Canvas.Left="102" Canvas.Top="560"
+                     Width="540"
+                     Text="Quick Text helps you create, organize, and trigger reusable text actions instantly. Built for fast workflow, gaming chats, trading messages, and automation-ready input."
+                     Foreground="#B3FFFFFF"
+                     FontFamily="Segoe UI"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     LineHeight="28"
+                     TextWrapping="Wrap" />
+
+          <Border x:Name="ModuleCardPanel" Canvas.Left="102" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Preset Library">
+            <Grid>
+              <Image x:Name="SceneImageA" Stretch="UniformToFill" Opacity="0.62" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="SceneImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle Fill="#B5080C0F" />
+              <StackPanel>
+                <TextBlock Text="Preset Library" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Reusable snippets, profiles, and module-ready text groups." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Border x:Name="HotkeyCardPanel" Canvas.Left="450" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Hotkey Manager">
+            <Grid>
+              <Image Source="Assets/success-scene.png" Stretch="UniformToFill" Opacity="0.58" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle Fill="#B5080C0F" />
+              <StackPanel>
+                <TextBlock Text="Hotkey Manager" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Packaged Electron hotkeys with native input fallback." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Border x:Name="ClipboardCardPanel" Canvas.Left="798" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Clipboard Actions">
+            <Grid>
+              <Image Source="Assets/error-scene.png" Stretch="UniformToFill" Opacity="0.54" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle Fill="#B5080C0F" />
+              <StackPanel>
+                <TextBlock Text="Clipboard Actions" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Fast paste, overlay tools, and automation-ready send flow." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Canvas>
       </Grid>
+
+      <Border Grid.Column="2"
+              Width="312"
+              Height="864"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Margin="0,32,16,0"
+              CornerRadius="18"
+              Background="#E0141416"
+              BorderBrush="#14FFFFFF"
+              BorderThickness="1">
+        <Grid Margin="20">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <StackPanel>
+            <TextBlock Text="KIRA LC" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="20" FontWeight="Black" />
+            <TextBlock Text="Client shell / Quick Text module" Foreground="#A3FFFFFF" FontFamily="Segoe UI" FontSize="12" Margin="0,4,0,0" />
+          </StackPanel>
+
+          <Border Grid.Row="1" Height="206" CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#16FFFFFF" BorderThickness="1" ClipToBounds="True" Margin="0,18,0,0">
+            <Grid>
+              <Image x:Name="HeroImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="HeroImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.28" IsHitTestVisible="False" />
+            </Grid>
+          </Border>
+
+          <StackPanel Grid.Row="2" Margin="0,22,0,0">
+            <TextBlock Text="M O D U L E S" Foreground="#8EFFFFFF" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" />
+
+            <Border x:Name="QuickTextModuleItem" Background="#1FFF4655" BorderBrush="#FF4655" BorderThickness="3,0,0,0" CornerRadius="8" Padding="10" Margin="0,10,0,0" Cursor="Hand" MouseLeftButtonUp="SelectQuickTextModuleFromPanel">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Quick Text" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="15" FontWeight="Bold" />
+                <TextBlock x:Name="QuickTextModuleState" Grid.Column="1" Text="Active" Foreground="#FF7884" FontFamily="Bahnschrift" FontSize="11" FontWeight="Bold" />
+              </Grid>
+            </Border>
+
+            <Border Background="#0AFFFFFF" CornerRadius="8" Padding="10" Margin="0,8,0,0" Opacity="0.45" Cursor="Hand" MouseLeftButtonUp="ShowComingSoonFromPanel" Tag="Macro for Games">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Macro for Games" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
+                <TextBlock Grid.Column="1" Text="Soon" Foreground="#A3FFFFFF" FontFamily="Bahnschrift" FontSize="11" FontWeight="Bold" />
+              </Grid>
+            </Border>
+
+            <Border Background="#0AFFFFFF" CornerRadius="8" Padding="10" Margin="0,8,0,0" Opacity="0.45" Cursor="Hand" MouseLeftButtonUp="ShowComingSoonFromPanel" Tag="Auto Notification Barotem">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Auto Notification Barotem" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" />
+                <TextBlock Grid.Column="1" Text="Planned" Foreground="#A3FFFFFF" FontFamily="Bahnschrift" FontSize="11" FontWeight="Bold" />
+              </Grid>
+            </Border>
+
+            <TextBlock Text="L I F E C Y C L E"
+                       Foreground="#8EFFFFFF"
+                       FontFamily="Bahnschrift"
+                       FontSize="12"
+                       FontWeight="Bold"
+                       Margin="0,18,0,0" />
+            <UniformGrid Columns="4" Rows="1" Margin="0,10,0,0">
+              <Border x:Name="InstallStateButton" Height="70" Margin="0,0,6,0" CornerRadius="10" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="InstallLifecycleClicked">
+                <Grid>
+                  <Image Source="Assets/install-hero.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                  <Rectangle Fill="#3A000000" />
+                  <TextBlock Text="INSTALL" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+                </Grid>
+              </Border>
+              <Border x:Name="RemoveStateButton" Height="70" Margin="0,0,6,0" CornerRadius="10" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="RemoveLifecycleClicked">
+                <Grid>
+                  <Image Source="Assets/uninstall-hero.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                  <Rectangle Fill="#3A000000" />
+                  <TextBlock Text="REMOVE" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+                </Grid>
+              </Border>
+              <Border x:Name="ReadyStateButton" Height="70" Margin="0,0,6,0" CornerRadius="10" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="ReadyLifecycleClicked">
+                <Grid>
+                  <Image Source="Assets/success-hero.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                  <Rectangle Fill="#30000000" />
+                  <TextBlock Text="READY" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+                </Grid>
+              </Border>
+              <Border x:Name="ErrorStateButton" Height="70" CornerRadius="10" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="ErrorLifecycleClicked">
+                <Grid>
+                  <Image Source="Assets/error-hero.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                  <Rectangle Fill="#3A000000" />
+                  <TextBlock Text="ERROR" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+                </Grid>
+              </Border>
+            </UniformGrid>
+          </StackPanel>
+
+          <StackPanel Grid.Row="3" Margin="0,16,0,0">
+            <TextBlock Text="I N S T A L L  P A T H" Foreground="#8EFFFFFF" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" />
+            <TextBox x:Name="InstallPathBox"
+                     Height="42"
+                     Margin="0,10,0,0"
+                     Padding="12,9"
+                     Background="#E80B1015"
+                     BorderBrush="#28FFFFFF"
+                     Foreground="#F2F2F2"
+                     CaretBrush="#FF4655"
+                     FontFamily="Consolas"
+                     FontSize="12" />
+
+            <Grid Margin="0,20,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="68" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Width="56" Height="56" CornerRadius="28" Background="#0DFFFFFF" ClipToBounds="True">
+                <Grid>
+                  <Image x:Name="CoreImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
+                  <Image x:Name="CoreImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+                </Grid>
+              </Border>
+              <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock x:Name="StatusText" Text="Ready to install." Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
+                <ProgressBar x:Name="InstallProgress" Height="8" Minimum="0" Maximum="100" Value="0" Margin="0,8,0,0" Foreground="#D6AA4F" Background="#20252A" BorderBrush="#33FFFFFF" />
+                <TextBlock x:Name="ProgressText" Text="Waiting for launch confirmation" Foreground="#9FFFFFFF" FontFamily="Segoe UI" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+
+            <TextBlock Text="C O R E  S T A T E S"
+                       Foreground="#8EFFFFFF"
+                       FontFamily="Bahnschrift"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       Margin="0,18,0,0" />
+            <UniformGrid Columns="3" Rows="1" Margin="0,9,0,0">
+              <Border Height="44" Margin="0,0,8,0" CornerRadius="12" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True">
+                <Image Source="Assets/progress-core.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+              </Border>
+              <Border Height="44" Margin="0,0,8,0" CornerRadius="12" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True">
+                <Image Source="Assets/success-core.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+              </Border>
+              <Border Height="44" CornerRadius="12" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True">
+                <Image Source="Assets/error-core.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+              </Border>
+            </UniformGrid>
+
+            <TextBlock Text="A C T I V I T Y"
+                       Foreground="#8EFFFFFF"
+                       FontFamily="Bahnschrift"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       Margin="0,14,0,0" />
+            <Border Height="112" CornerRadius="14" Background="#B80B1015" BorderBrush="#18FFFFFF" BorderThickness="1" Margin="0,8,0,0" ClipToBounds="True">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="ActivityLogPanel" Margin="10,8,10,0" />
+              </ScrollViewer>
+            </Border>
+          </StackPanel>
+
+          <TextBlock x:Name="StepText"
+                     Grid.Row="4"
+                     Text="Engine: embedded Quick Text setup core"
+                     Foreground="#7DFFFFFF"
+                     FontFamily="Segoe UI"
+                     FontSize="12"
+                     TextWrapping="Wrap" />
+        </Grid>
+      </Border>
     </Grid>
   </Border>
 </Window>
