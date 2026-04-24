@@ -132,7 +132,7 @@
             </Border>
           </Button>
 
-          <Button Canvas.Left="16" Canvas.Top="830" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="BrowseInstallPath">
+          <Button Canvas.Left="16" Canvas.Top="830" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="OpenInstallDialog">
             <Border CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1">
               <TextBlock Text="SET" Foreground="#9EA8B3" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
@@ -196,11 +196,11 @@
           <Button x:Name="InstallButton"
                   Canvas.Left="102"
                   Canvas.Top="292"
-                  Width="230"
-                  Height="70"
+                  Width="244"
+                  Height="58"
                   Style="{StaticResource NakedButton}"
                   Click="InstallOrLaunch">
-            <Grid Width="230" Height="70">
+            <Grid Width="244" Height="58">
               <Image Source="Assets/launch-button-bg.png"
                      Stretch="Fill"
                      RenderOptions.BitmapScalingMode="HighQuality" />
@@ -208,23 +208,61 @@
                          Text="▶ LAUNCH"
                          Foreground="#111111"
                          FontFamily="Bahnschrift"
-                         FontSize="28"
+                         FontSize="22"
                          FontWeight="Black"
                          HorizontalAlignment="Center"
                          VerticalAlignment="Center" />
             </Grid>
           </Button>
 
-          <Button Canvas.Left="342"
+          <Button x:Name="ActionMenuButton"
+                  Canvas.Left="356"
                   Canvas.Top="292"
-                  Width="70"
-                  Height="70"
+                  Width="58"
+                  Height="58"
                   Style="{StaticResource NakedButton}"
-                  Click="BrowseInstallPath">
-            <Border CornerRadius="20" Background="#BEBE8C2A" BorderBrush="#55D6AA4F" BorderThickness="1">
-              <TextBlock Text="⌄" Foreground="#111111" FontFamily="Bahnschrift" FontSize="28" FontWeight="Black" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  Click="ToggleActionMenu">
+            <Border CornerRadius="16" Background="#D1B98625" BorderBrush="#66D6AA4F" BorderThickness="1">
+              <TextBlock Text="⌄" Foreground="#111111" FontFamily="Bahnschrift" FontSize="25" FontWeight="Black" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0" />
             </Border>
           </Button>
+
+          <Popup x:Name="ActionMenuPopup"
+                 PlacementTarget="{Binding ElementName=ActionMenuButton}"
+                 Placement="Bottom"
+                 HorizontalOffset="-190"
+                 VerticalOffset="10"
+                 StaysOpen="False"
+                 AllowsTransparency="True"
+                 PopupAnimation="Fade">
+            <Border Width="300" CornerRadius="14" Background="#F0131519" BorderBrush="#2DFFFFFF" BorderThickness="1" Padding="10">
+              <StackPanel>
+                <Button Style="{StaticResource NakedButton}" Height="46" Click="OpenInstallDialog">
+                  <Border CornerRadius="10" Background="#16FFFFFF" Padding="12,8">
+                    <Grid>
+                      <TextBlock x:Name="MenuInstallLabel" Text="Install Quick Text" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
+                      <TextBlock Text="Default path, custom path, then download" Foreground="#88FFFFFF" FontFamily="Segoe UI" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,-3" />
+                    </Grid>
+                  </Border>
+                </Button>
+                <Button x:Name="LaunchMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,7,0,0" Click="LaunchFromMenu">
+                  <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
+                    <TextBlock Text="Launch" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                  </Border>
+                </Button>
+                <Button x:Name="RepairMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="RepairFromMenu">
+                  <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
+                    <TextBlock Text="Repair" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                  </Border>
+                </Button>
+                <Button x:Name="UninstallMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="UninstallFromMenu">
+                  <Border CornerRadius="10" Background="#19FF4655" Padding="12,0">
+                    <TextBlock Text="Uninstall" Foreground="#FFD9DE" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                  </Border>
+                </Button>
+              </StackPanel>
+            </Border>
+          </Popup>
 
           <Image Canvas.Left="86"
                  Canvas.Top="382"
@@ -423,7 +461,31 @@
           </StackPanel>
 
           <StackPanel Grid.Row="3" Margin="0,16,0,0">
-            <TextBlock Text="I N S T A L L  P A T H" Foreground="#8EFFFFFF" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" />
+            <TextBlock Text="S E T U P" Foreground="#8EFFFFFF" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" />
+            <Border CornerRadius="12"
+                    Background="#0DFFFFFF"
+                    BorderBrush="#18FFFFFF"
+                    BorderThickness="1"
+                    Padding="12"
+                    Margin="0,10,0,0"
+                    Cursor="Hand"
+                    MouseLeftButtonUp="OpenInstallDialogFromPanel">
+              <StackPanel>
+                <TextBlock Text="Install target" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" />
+                <TextBlock x:Name="InstallPathPreviewText"
+                           Text="Default install path"
+                           Foreground="#A8FFFFFF"
+                           FontFamily="Consolas"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,7,0,0" />
+                <TextBlock Text="Click to review path before downloading"
+                           Foreground="#75FFFFFF"
+                           FontFamily="Segoe UI"
+                           FontSize="11"
+                           Margin="0,7,0,0" />
+              </StackPanel>
+            </Border>
             <TextBox x:Name="InstallPathBox"
                      Height="42"
                      Margin="0,10,0,0"
@@ -433,7 +495,8 @@
                      Foreground="#F2F2F2"
                      CaretBrush="#FF4655"
                      FontFamily="Consolas"
-                     FontSize="12" />
+                     FontSize="12"
+                     Visibility="Collapsed" />
 
             <Grid Visibility="Collapsed">
               <Image x:Name="CoreImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
@@ -454,6 +517,108 @@
                      TextWrapping="Wrap" />
         </Grid>
       </Border>
+
+      <Grid x:Name="InstallPathDialog"
+            Grid.ColumnSpan="3"
+            Panel.ZIndex="80"
+            Visibility="Collapsed">
+        <Rectangle Fill="#B805070A" />
+        <Border Width="540"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                CornerRadius="18"
+                Background="#F014171B"
+                BorderBrush="#32FFFFFF"
+                BorderThickness="1"
+                Padding="24">
+          <StackPanel>
+            <TextBlock x:Name="InstallDialogTitle"
+                       Text="Install Quick Text"
+                       Foreground="#F2F2F2"
+                       FontFamily="Bahnschrift"
+                       FontSize="24"
+                       FontWeight="Black" />
+            <TextBlock x:Name="InstallDialogBody"
+                       Text="Quick Text will be installed to the default path below. You can choose a custom folder before downloading."
+                       Foreground="#A8FFFFFF"
+                       FontFamily="Segoe UI"
+                       FontSize="13"
+                       LineHeight="20"
+                       TextWrapping="Wrap"
+                       Margin="0,10,0,0" />
+
+            <Border CornerRadius="12" Background="#E80B1015" BorderBrush="#28FFFFFF" BorderThickness="1" Padding="12" Margin="0,18,0,0">
+              <StackPanel>
+                <TextBlock Text="Install path" Foreground="#80FFFFFF" FontFamily="Bahnschrift" FontSize="11" FontWeight="Bold" />
+                <TextBox x:Name="InstallDialogPathBox"
+                         Margin="0,7,0,0"
+                         Background="Transparent"
+                         BorderBrush="Transparent"
+                         Foreground="#F2F2F2"
+                         CaretBrush="#FF4655"
+                         FontFamily="Consolas"
+                         FontSize="13"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Grid Margin="0,18,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <Button Style="{StaticResource NakedButton}" HorizontalAlignment="Left" Click="LocateExistingInstall">
+                <TextBlock Text="File đã có sẵn? Bấm vào đây"
+                           Foreground="#8FFFFFFF"
+                           FontFamily="Segoe UI"
+                           FontSize="12"
+                           TextDecorations="Underline" />
+              </Button>
+              <Button x:Name="InstallDialogBrowseButton"
+                      Grid.Column="1"
+                      Width="136"
+                      Height="38"
+                      Style="{StaticResource NakedButton}"
+                      Click="BrowsePathFromDialog">
+                <Border CornerRadius="10" Background="#12FFFFFF" BorderBrush="#22FFFFFF" BorderThickness="1">
+                  <TextBlock Text="Custom path" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+              </Button>
+            </Grid>
+
+            <Grid Margin="0,22,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="112" />
+                <ColumnDefinition Width="142" />
+              </Grid.ColumnDefinitions>
+              <Button Grid.Column="1" Height="42" Style="{StaticResource NakedButton}" Click="CloseInstallDialog">
+                <Border CornerRadius="12" Background="#10FFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1">
+                  <TextBlock Text="Cancel" Foreground="#BFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+              </Button>
+              <Button x:Name="InstallDialogPrimaryButton"
+                      Grid.Column="2"
+                      Height="42"
+                      Margin="10,0,0,0"
+                      Style="{StaticResource NakedButton}"
+                      Click="ConfirmInstallFromDialog">
+                <Border CornerRadius="12" Background="#D6AA4F" BorderBrush="#FFE7A6" BorderThickness="1">
+                  <TextBlock x:Name="InstallDialogPrimaryLabel"
+                             Text="TẢI VỀ"
+                             Foreground="#111111"
+                             FontFamily="Bahnschrift"
+                             FontSize="14"
+                             FontWeight="Black"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center" />
+                </Border>
+              </Button>
+            </Grid>
+          </StackPanel>
+        </Border>
+      </Grid>
     </Grid>
   </Border>
 </Window>

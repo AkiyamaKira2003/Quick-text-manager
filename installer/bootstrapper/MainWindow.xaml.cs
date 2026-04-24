@@ -34,6 +34,7 @@ public partial class MainWindow
         "Quick Text");
 
     private bool _installComplete;
+    private bool _installDialogRepairMode;
     private bool _installing;
     private bool _showingHeroA = true;
     private bool _showingCoreA = true;
@@ -63,6 +64,7 @@ public partial class MainWindow
     {
         InitializeComponent();
         InstallPathBox.Text = _defaultInstallPath;
+        SyncInstallPathPreview();
         Loaded += (_, _) => ApplyRoundedShellClip();
         SizeChanged += (_, _) => ApplyRoundedShellClip();
         WarmImageCache();
@@ -137,32 +139,101 @@ public partial class MainWindow
         Close();
     }
 
-    private void BrowseInstallPath(object sender, RoutedEventArgs e)
+    private void OpenInstallDialog(object sender, RoutedEventArgs e)
+    {
+        ShowInstallDialog(repairMode: false);
+    }
+
+    private void OpenInstallDialogFromPanel(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        ShowInstallDialog(repairMode: false);
+    }
+
+    private void ToggleActionMenu(object sender, RoutedEventArgs e)
     {
         if (_installing)
         {
             return;
         }
 
+        _installComplete = IsQuickTextInstalled();
+        UpdateActionAvailability();
+        ActionMenuPopup.IsOpen = !ActionMenuPopup.IsOpen;
+    }
+
+    private void BrowseInstallPath(object sender, RoutedEventArgs e)
+    {
+        ChooseInstallPath("Choose where Kira LC installs the Quick Text module.");
+    }
+
+    private void BrowsePathFromDialog(object sender, RoutedEventArgs e)
+    {
+        if (ChooseInstallPath("Choose where Kira LC installs the Quick Text module."))
+        {
+            InstallDialogPathBox.Text = InstallPathBox.Text;
+        }
+    }
+
+    private void LocateExistingInstall(object sender, RoutedEventArgs e)
+    {
+        if (!ChooseInstallPath("Select the folder that already contains QuickText.exe.", expectExisting: true))
+        {
+            return;
+        }
+
+        InstallDialogPathBox.Text = InstallPathBox.Text;
+        if (_installComplete)
+        {
+            InstallPathDialog.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        StatusText.Text = "QuickText.exe was not found in that folder.";
+        ProgressText.Text = "Choose a folder that contains QuickText.exe or continue with this install path.";
+    }
+
+    private bool ChooseInstallPath(string description, bool expectExisting = false)
+    {
+        if (_installing)
+        {
+            return false;
+        }
+
         using var dialog = new Forms.FolderBrowserDialog
         {
-            Description = "Choose where Kira LC installs the Quick Text module.",
+            Description = description,
             SelectedPath = Directory.Exists(InstallPathBox.Text) ? InstallPathBox.Text : _defaultInstallPath,
             UseDescriptionForTitle = true,
         };
 
-        if (dialog.ShowDialog() == Forms.DialogResult.OK)
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
         {
-            InstallPathBox.Text = dialog.SelectedPath;
-            _installComplete = IsQuickTextInstalled();
-            AddActivity($"Install path set: {dialog.SelectedPath}", "info");
-            TransitionToState(
-                _installComplete ? SetupState.Success : SetupState.Idle,
-                _installComplete ? "Quick Text found in the selected folder." : "Install path updated.");
+            return false;
         }
+
+        InstallPathBox.Text = dialog.SelectedPath;
+        SyncInstallPathPreview();
+        _installComplete = IsQuickTextInstalled();
+        AddActivity($"Install path set: {dialog.SelectedPath}", "info");
+        TransitionToState(
+            _installComplete ? SetupState.Success : SetupState.Idle,
+            _installComplete
+                ? "Quick Text found in the selected folder."
+                : expectExisting
+                    ? "QuickText.exe was not found there."
+                    : "Install path updated.");
+
+        return true;
     }
 
-    private async void InstallOrLaunch(object sender, RoutedEventArgs e)
+    private void SyncInstallPathPreview()
+    {
+        InstallPathPreviewText.Text = InstallPathBox.Text;
+        InstallDialogPathBox.Text = InstallPathBox.Text;
+    }
+
+    private void InstallOrLaunch(object sender, RoutedEventArgs e)
     {
         if (_installing)
         {
@@ -178,7 +249,75 @@ public partial class MainWindow
             return;
         }
 
+        ShowInstallDialog(repairMode: false);
+    }
+
+    private void ShowInstallDialog(bool repairMode)
+    {
+        if (_installing)
+        {
+            return;
+        }
+
+        ActionMenuPopup.IsOpen = false;
+        _installComplete = IsQuickTextInstalled();
+        _installDialogRepairMode = repairMode || _installComplete;
+        SyncInstallPathPreview();
+
+        InstallDialogTitle.Text = _installDialogRepairMode ? "Repair Quick Text" : "Install Quick Text";
+        InstallDialogBody.Text = _installDialogRepairMode
+            ? "Quick Text is already installed at the path below. Repair will refresh the files in this folder."
+            : "Quick Text will be installed to the default path below. You can choose a custom folder before downloading.";
+        InstallDialogPrimaryLabel.Text = _installDialogRepairMode ? "REPAIR" : "TẢI VỀ";
+        InstallPathDialog.Visibility = Visibility.Visible;
+    }
+
+    private void CloseInstallDialog(object sender, RoutedEventArgs e)
+    {
+        InstallPathDialog.Visibility = Visibility.Collapsed;
+    }
+
+    private async void ConfirmInstallFromDialog(object sender, RoutedEventArgs e)
+    {
+        if (_installing)
+        {
+            return;
+        }
+
+        var path = string.IsNullOrWhiteSpace(InstallDialogPathBox.Text)
+            ? _defaultInstallPath
+            : InstallDialogPathBox.Text.Trim();
+
+        InstallPathBox.Text = path;
+        SyncInstallPathPreview();
+        InstallPathDialog.Visibility = Visibility.Collapsed;
+        AddActivity(_installDialogRepairMode ? "Repair confirmed." : "Download confirmed.", "info");
+
         await InstallQuickTextAsync().ConfigureAwait(true);
+    }
+
+    private void LaunchFromMenu(object sender, RoutedEventArgs e)
+    {
+        ActionMenuPopup.IsOpen = false;
+        if (!EnsureQuickTextInstalled("Launch action"))
+        {
+            return;
+        }
+
+        AddActivity("Launch selected from setup menu.", "success");
+        TransitionToState(SetupState.Launching, "Opening Quick Text...");
+        LaunchQuickText("setup menu");
+    }
+
+    private void RepairFromMenu(object sender, RoutedEventArgs e)
+    {
+        ShowInstallDialog(repairMode: true);
+    }
+
+    private async void UninstallFromMenu(object sender, RoutedEventArgs e)
+    {
+        ActionMenuPopup.IsOpen = false;
+        await RemoveQuickTextAsync().ConfigureAwait(true);
     }
 
     private async Task InstallQuickTextAsync()
@@ -462,7 +601,7 @@ public partial class MainWindow
         {
             case SetupState.Idle:
                 SetVisualState(InstallHeroSource, ProgressCoreSource, ProgressSceneSource);
-                LaunchButtonLabel.Text = "▶ LAUNCH";
+                LaunchButtonLabel.Text = "INSTALL";
                 StatusText.Text = detail ?? "Ready to install Quick Text.";
                 ProgressText.Text = "Waiting for launch confirmation";
                 InstallProgress.Value = 0;
@@ -537,8 +676,19 @@ public partial class MainWindow
         InstallButton.IsEnabled = !busy;
         InstallButton.Opacity = busy ? 0.64 : 1;
         InstallPathBox.IsEnabled = !busy;
+        ActionMenuButton.IsEnabled = !busy;
+        ActionMenuButton.Opacity = busy ? 0.58 : 1;
+        InstallDialogPrimaryButton.IsEnabled = !busy;
+        InstallDialogBrowseButton.IsEnabled = !busy;
 
         var isInstalled = _installComplete || IsQuickTextInstalled();
+        MenuInstallLabel.Text = isInstalled ? "Repair Quick Text" : "Install Quick Text";
+        LaunchMenuButton.IsEnabled = !busy && isInstalled;
+        LaunchMenuButton.Opacity = !busy && isInstalled ? 1 : 0.42;
+        RepairMenuButton.IsEnabled = !busy && isInstalled;
+        RepairMenuButton.Opacity = !busy && isInstalled ? 1 : 0.42;
+        UninstallMenuButton.IsEnabled = !busy && isInstalled;
+        UninstallMenuButton.Opacity = !busy && isInstalled ? 1 : 0.42;
         InstallStateButton.Opacity = busy ? 0.55 : 1;
         RemoveStateButton.Opacity = !busy && isInstalled ? 1 : 0.45;
         ReadyStateButton.Opacity = !busy && isInstalled ? 1 : 0.45;
