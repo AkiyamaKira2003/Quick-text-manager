@@ -1435,7 +1435,7 @@ public partial class MainWindow
         }
 
         _currentSceneSource = source;
-        CrossfadeImage(SceneImageA, SceneImageB, source, ref _showingSceneA, animate, 0.62);
+        CrossfadeImage(SceneImageA, SceneImageB, source, ref _showingSceneA, animate, 0.42);
     }
 
     private void CrossfadeImage(System.Windows.Controls.Image imageA, System.Windows.Controls.Image imageB, string source, ref bool showingA, bool animate, double targetOpacity)

@@ -112,12 +112,12 @@
 
     <Style x:Key="ToolCard" TargetType="Border">
       <Setter Property="Width" Value="320" />
-      <Setter Property="Height" Value="120" />
+      <Setter Property="Height" Value="112" />
       <Setter Property="CornerRadius" Value="14" />
-      <Setter Property="Background" Value="#13FFFFFF" />
-      <Setter Property="BorderBrush" Value="#17FFFFFF" />
+      <Setter Property="Background" Value="#1AFFFFFF" />
+      <Setter Property="BorderBrush" Value="#2654E0FF" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Padding" Value="22" />
+      <Setter Property="Padding" Value="20" />
     </Style>
   </Window.Resources>
 
@@ -367,7 +367,7 @@
                    StaysOpen="False"
                    AllowsTransparency="True"
                    PopupAnimation="Fade">
-              <Border Width="300" CornerRadius="14" Background="#F0131519" BorderBrush="#2DFFFFFF" BorderThickness="1" Padding="10">
+              <Border Width="300" CornerRadius="14" Background="#FE131519" BorderBrush="#38FFFFFF" BorderThickness="1" Padding="10">
                 <StackPanel>
                   <Button x:Name="InstallMenuButton"
                           Style="{StaticResource NakedButton}"
@@ -520,36 +520,36 @@
             </Grid>
           </Border>
 
-          <Border x:Name="ModuleCardPanel" Canvas.Left="102" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Preset Library">
+          <Border x:Name="ModuleCardPanel" Canvas.Left="102" Canvas.Top="742" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Quick Translate">
             <Grid>
-              <Image x:Name="SceneImageA" Stretch="UniformToFill" Opacity="0.62" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="SceneImageA" Stretch="UniformToFill" Opacity="0.42" RenderOptions.BitmapScalingMode="HighQuality" />
               <Image x:Name="SceneImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Rectangle Fill="#B5080C0F" />
+              <Rectangle Fill="#D4070B0E" />
               <StackPanel>
-                <TextBlock Text="Quick Translate" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
-                <TextBlock Text="Vietnamese input to Korean game chat with saved phrases." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <TextBlock Text="Quick Translate" Foreground="#FFFFFFFF" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Vietnamese input to Korean game chat with saved phrases." Foreground="#E8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,9,0,0" />
               </StackPanel>
             </Grid>
           </Border>
 
-          <Border x:Name="HotkeyCardPanel" Canvas.Left="450" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Hotkey Manager">
+          <Border x:Name="HotkeyCardPanel" Canvas.Left="450" Canvas.Top="742" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Korean OCR">
             <Grid>
-              <Image Source="Assets/success-scene.png" Stretch="UniformToFill" Opacity="0.58" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Rectangle Fill="#B5080C0F" />
+              <Image Source="Assets/success-scene.png" Stretch="UniformToFill" Opacity="0.40" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle Fill="#D4070B0E" />
               <StackPanel>
-                <TextBlock Text="Korean OCR" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
-                <TextBlock Text="Capture Korean UI text and read it back in Vietnamese." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <TextBlock Text="Korean OCR" Foreground="#FFFFFFFF" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Capture Korean UI text and read it back in Vietnamese." Foreground="#E8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,9,0,0" />
               </StackPanel>
             </Grid>
           </Border>
 
-          <Border x:Name="ClipboardCardPanel" Canvas.Left="798" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Clipboard Actions">
+          <Border x:Name="ClipboardCardPanel" Canvas.Left="798" Canvas.Top="742" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Game Overlay">
             <Grid>
-              <Image Source="Assets/error-scene.png" Stretch="UniformToFill" Opacity="0.54" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Rectangle Fill="#B5080C0F" />
+              <Image Source="Assets/error-scene.png" Stretch="UniformToFill" Opacity="0.38" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle Fill="#D4070B0E" />
               <StackPanel>
-                <TextBlock Text="Game Overlay" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
-                <TextBlock Text="Keep translation controls close without blocking gameplay." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <TextBlock Text="Game Overlay" Foreground="#FFFFFFFF" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Keep translation controls close without blocking gameplay." Foreground="#E8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,9,0,0" />
               </StackPanel>
             </Grid>
           </Border>
