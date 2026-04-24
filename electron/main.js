@@ -4872,6 +4872,7 @@ function createMainWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: true,
+    fullscreenable: false,
     show: false,
     icon: resolveAppIconPath(),
     webPreferences: {
@@ -4882,6 +4883,44 @@ function createMainWindow() {
     },
   })
   mainBoundsSignature = toBoundsSignature(bounds)
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const key = String(input?.key || '').toLowerCase()
+    const code = String(input?.code || '').toLowerCase()
+    const ctrlOrMeta = !!input?.control || !!input?.meta
+    const alt = !!input?.alt
+    const shift = !!input?.shift
+
+    const blocked =
+      key === 'f11' ||
+      key === 'f12' ||
+      key === 'f5' ||
+      key === 'browserback' ||
+      key === 'browserforward' ||
+      (alt && (key === 'arrowleft' || key === 'arrowright' || key === 'left' || key === 'right')) ||
+      (ctrlOrMeta &&
+        (key === 'r' ||
+          key === 'w' ||
+          key === 'q' ||
+          key === 'l' ||
+          key === 'p' ||
+          key === 's' ||
+          key === 'o' ||
+          key === 'n' ||
+          key === 't' ||
+          key === 'u' ||
+          key === '0' ||
+          key === '=' ||
+          key === '+' ||
+          key === '-' ||
+          code === 'equal' ||
+          code === 'minus' ||
+          (shift && (key === 'i' || key === 'j' || key === 'c'))))
+
+    if (blocked) {
+      event.preventDefault()
+    }
+  })
 
   mainWindow.loadURL(buildRendererUrl('/main'))
   attachWindowHealthHandlers(mainWindow, 'main')
