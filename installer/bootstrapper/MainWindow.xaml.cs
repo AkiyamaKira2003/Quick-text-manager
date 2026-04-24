@@ -36,6 +36,7 @@ public partial class MainWindow
     private bool _installComplete;
     private bool _installDialogRepairMode;
     private bool _installing;
+    private bool _sidebarModulePreviewPinned;
     private long _transferLastBytes;
     private DateTime _transferLastSampleAt = DateTime.UtcNow;
     private long _transferTotalBytes;
@@ -735,6 +736,8 @@ public partial class MainWindow
 
     private void SelectQuickTextModule()
     {
+        _sidebarModulePreviewPinned = false;
+        SidebarModulePopup.IsOpen = false;
         _installComplete = IsQuickTextInstalled();
         AddActivity("Quick Text module selected.", _installComplete ? "success" : "info");
         TransitionToState(
@@ -744,6 +747,11 @@ public partial class MainWindow
 
     private void ShowComingSoon(object sender, RoutedEventArgs e)
     {
+        if (sender is FrameworkElement target)
+        {
+            ShowSidebarModuleData(target, pinned: true);
+        }
+
         ShowComingSoon((sender as FrameworkElement)?.Tag?.ToString() ?? "Module");
     }
 
@@ -755,9 +763,43 @@ public partial class MainWindow
 
     private void ShowComingSoon(string moduleName)
     {
-        AddActivity($"{moduleName} is coming soon. No external action was opened.", "warning");
-        StatusText.Text = $"{moduleName} is coming soon.";
+        var state = string.Equals(moduleName, "Auto Notification Barotem", StringComparison.OrdinalIgnoreCase)
+            ? "Planned"
+            : "Coming soon";
+
+        AddActivity($"{moduleName} is {state.ToLowerInvariant()}. No external action was opened.", "warning");
+        StatusText.Text = $"{moduleName}: {state}";
         ProgressText.Text = "Only Quick Text is active in this release.";
+    }
+
+    private void ShowSidebarModulePreview(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is FrameworkElement target)
+        {
+            ShowSidebarModuleData(target, pinned: false);
+        }
+    }
+
+    private void HideSidebarModulePreview(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_sidebarModulePreviewPinned)
+        {
+            SidebarModulePopup.IsOpen = false;
+        }
+    }
+
+    private void ShowSidebarModuleData(FrameworkElement target, bool pinned)
+    {
+        var moduleName = target.Tag?.ToString() ?? "Module";
+        var state = ReferenceEquals(target, BarotemNavButton) ? "Planned" : "Coming soon";
+
+        _sidebarModulePreviewPinned = pinned;
+        SidebarModuleTitleText.Text = moduleName;
+        SidebarModuleStateText.Text = state;
+        SidebarModuleStateText.Foreground = new SolidColorBrush(
+            state == "Planned" ? MediaColor.FromRgb(214, 170, 79) : MediaColor.FromRgb(160, 168, 176));
+        SidebarModulePopup.PlacementTarget = target;
+        SidebarModulePopup.IsOpen = true;
     }
 
     private void OpenQuickTextFeature(object sender, MouseButtonEventArgs e)
