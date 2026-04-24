@@ -1481,7 +1481,7 @@ function nextCorrelationId(prefix) {
 }
 
 function normalizeHotkeyErrorSource(value) {
-  if (value === 'python-config' || value === 'input-events' || value === 'overlay-action') return value
+  if (value === 'python-config' || value === 'input-events' || value === 'overlay-action' || value === 'electron-hotkey') return value
   return 'unknown'
 }
 
@@ -5607,10 +5607,36 @@ function applyAppToggleHotkeyAction() {
   refreshTrayMenu()
 }
 
-function triggerSendHotkeyAction() {
+async function triggerSendHotkeyAction() {
   const settings = ensureSettings()
   if (!settings.appEnabled) return
-  broadcastToWindows('trigger:send')
+  const text = getSelectedTextFromSettings(settings)
+  if (!text.trim()) return
+
+  const startedAt = performance.now()
+  const result = await handleInputSend({ text })
+  const latencyMs = Math.max(0, performance.now() - startedAt)
+  if (result?.ok === true) {
+    recordSendTelemetry({
+      success: true,
+      latencyMs,
+      correlationId: result.correlationId,
+    })
+    return
+  }
+
+  const message = typeof result?.error === 'string' && result.error.trim() ? result.error.trim() : 'Electron hotkey send failed'
+  recordSendTelemetry({
+    success: false,
+    latencyMs,
+    error: message,
+    correlationId: result?.correlationId,
+  })
+  recordHotkeyError({
+    source: 'electron-hotkey',
+    message,
+    correlationId: result?.correlationId,
+  })
 }
 
 function handleElectronHotkeyAction(actionId) {
@@ -5635,7 +5661,7 @@ function handleElectronHotkeyAction(actionId) {
       return
     }
     if (actionId === 'text.send_current') {
-      triggerSendHotkeyAction()
+      void triggerSendHotkeyAction()
     }
     if (actionId === 'overlay.paste_image') {
       try {

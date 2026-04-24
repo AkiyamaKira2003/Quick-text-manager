@@ -14,7 +14,10 @@ $brandAssets = Join-Path $repoRoot "installer/brand"
 $sourceMap = @{
   "quicktext-hero-source.png" = "MAIN UI.png"
   "sword-states-sheet.png" = "sidebar.png uninstaller-sidebar.png success-hero.png error-hero.png"
-  "energy-core-sheet.png" = "progress-core.png success-hero.png error-hero.png"
+  "energy-core-sheet.png" = @(
+    "progress-core.png (left) success-core.png (center) error-core.png (right)",
+    "progress-core.png success-hero.png error-hero.png"
+  )
   "hud-frame-header-sheet.png" = "frame-overlay.png header.png"
   "launch-button-source.png" = "lauchbutton.png"
   "noise-overlay-source.png" = "noise-overlay.png"
@@ -25,14 +28,24 @@ New-Item -ItemType Directory -Path $resolvedSourceDir, $assetRoot, $publicRoot, 
 
 foreach ($entry in $sourceMap.GetEnumerator()) {
   $target = Join-Path $resolvedSourceDir $entry.Key
-  if (Test-Path -LiteralPath $target) {
-    continue
-  }
+  $legacyNames = @($entry.Value)
 
-  $legacy = Join-Path $repoRoot $entry.Value
-  if (Test-Path -LiteralPath $legacy) {
-    Copy-Item -LiteralPath $legacy -Destination $target -Force
-    Write-Host "[kira-assets] imported $($entry.Value) -> $target"
+  foreach ($legacyName in $legacyNames) {
+    $legacy = Join-Path $repoRoot $legacyName
+    if (-not (Test-Path -LiteralPath $legacy)) {
+      continue
+    }
+
+    $shouldImport = -not (Test-Path -LiteralPath $target)
+    if (-not $shouldImport) {
+      $shouldImport = (Get-Item -LiteralPath $legacy).LastWriteTimeUtc -gt (Get-Item -LiteralPath $target).LastWriteTimeUtc
+    }
+
+    if ($shouldImport) {
+      Copy-Item -LiteralPath $legacy -Destination $target -Force
+      Write-Host "[kira-assets] imported $legacyName -> $target"
+    }
+    break
   }
 }
 
@@ -263,20 +276,21 @@ Copy-Asset $quickTextHero @(
   (Join-Path $bootstrapperAssets "quicktext-hero.png")
 )
 
-# Synchronized sword states, four panels across.
+# Synchronized sword states, 2x2 grid:
+# top-left install, top-right uninstall, bottom-left success, bottom-right error.
 $swordSize = [KiraClientImageTools]::GetSize($sourceSword)
-$swordPanelWidth = [int][Math]::Floor($swordSize.Width / 4)
-$swordPanelHeight = $swordSize.Height
+$swordPanelWidth = [int][Math]::Floor($swordSize.Width / 2)
+$swordPanelHeight = [int][Math]::Floor($swordSize.Height / 2)
 $swordStates = @(
-  @{ File = "sword-pristine.png"; Installer = "install-hero.png"; Brand = "sidebar.png"; X = 0 },
-  @{ File = "sword-damaged.png"; Installer = "uninstall-hero.png"; Brand = "uninstaller-sidebar.png"; X = 1 },
-  @{ File = "sword-success.png"; Installer = "success-hero.png"; Brand = ""; X = 2 },
-  @{ File = "sword-error.png"; Installer = "error-hero.png"; Brand = ""; X = 3 }
+  @{ File = "sword-pristine.png"; Installer = "install-hero.png"; Brand = "sidebar.png"; X = 0; Y = 0 },
+  @{ File = "sword-damaged.png"; Installer = "uninstall-hero.png"; Brand = "uninstaller-sidebar.png"; X = 1; Y = 0 },
+  @{ File = "sword-success.png"; Installer = "success-hero.png"; Brand = ""; X = 0; Y = 1 },
+  @{ File = "sword-error.png"; Installer = "error-hero.png"; Brand = ""; X = 1; Y = 1 }
 )
 
 foreach ($state in $swordStates) {
   $brandOutput = Join-Path $assetRoot ("brand/" + $state.File)
-  [KiraClientImageTools]::SaveCrop($sourceSword, $brandOutput, $state.X * $swordPanelWidth, 0, $swordPanelWidth, $swordPanelHeight, 1024, 1792, $false, 0)
+  [KiraClientImageTools]::SaveCrop($sourceSword, $brandOutput, $state.X * $swordPanelWidth, $state.Y * $swordPanelHeight, $swordPanelWidth, $swordPanelHeight, 1024, 1024, $false, 0)
 
   $destinations = @(
     (Join-Path $publicRoot ("brand/" + $state.File)),
@@ -368,13 +382,32 @@ Copy-Asset $headerGlowOutput @(
   (Join-Path $bootstrapperAssets "header-glow.png")
 )
 
-# Launch button and grain.
-$launchOutput = Join-Path $assetRoot "ui/launch-button-bg.png"
-[KiraClientImageTools]::BlackToAlpha($sourceLaunch, $launchOutput, 20, $true, 28, 400, 120, 36)
-Copy-Asset $launchOutput @(
-  (Join-Path $publicRoot "ui/launch-button-bg.png"),
-  (Join-Path $bootstrapperAssets "launch-button-bg.png")
+# Launch button states, three panels across: normal, hover, active.
+$launchSize = [KiraClientImageTools]::GetSize($sourceLaunch)
+$launchPanelWidth = [int][Math]::Floor($launchSize.Width / 3)
+$launchStates = @(
+  @{ File = "launch-normal.png"; X = 0 },
+  @{ File = "launch-hover.png"; X = 1 },
+  @{ File = "launch-active.png"; X = 2 }
 )
+
+foreach ($state in $launchStates) {
+  $rawLaunch = Join-Path $assetRoot ("ui/raw-" + $state.File)
+  $finalLaunch = Join-Path $assetRoot ("ui/" + $state.File)
+  [KiraClientImageTools]::SaveCrop($sourceLaunch, $rawLaunch, $state.X * $launchPanelWidth, 0, $launchPanelWidth, $launchSize.Height, 640, 320, $false, 0)
+  [KiraClientImageTools]::BlackToAlpha($rawLaunch, $finalLaunch, 20, $true, 28, 400, 120, 36)
+  Remove-Item -LiteralPath $rawLaunch -Force
+
+  $destinations = @(
+    (Join-Path $publicRoot ("ui/" + $state.File)),
+    (Join-Path $bootstrapperAssets $state.File)
+  )
+  if ($state.File -eq "launch-normal.png") {
+    $destinations += Join-Path $publicRoot "ui/launch-button-bg.png"
+    $destinations += Join-Path $bootstrapperAssets "launch-button-bg.png"
+  }
+  Copy-Asset $finalLaunch $destinations
+}
 
 $noiseOutput = Join-Path $assetRoot "ui/noise-overlay.png"
 [KiraClientImageTools]::SaveCover($sourceNoise, $noiseOutput, 1024, 1024)

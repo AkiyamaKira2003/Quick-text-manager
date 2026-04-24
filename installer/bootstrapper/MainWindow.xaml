@@ -201,7 +201,24 @@
                   Style="{StaticResource NakedButton}"
                   Click="InstallOrLaunch">
             <Grid Width="230" Height="70">
-              <Image Source="Assets/launch-button-bg.png" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality">
+                <Image.Style>
+                  <Style TargetType="Image">
+                    <Setter Property="Source" Value="Assets/launch-normal.png" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                        <Setter Property="Source" Value="Assets/launch-hover.png" />
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsPressed, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                        <Setter Property="Source" Value="Assets/launch-active.png" />
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                        <Setter Property="Source" Value="Assets/launch-active.png" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Image.Style>
+              </Image>
               <TextBlock x:Name="LaunchButtonLabel"
                          Text="▶ LAUNCH"
                          Foreground="#111111"
