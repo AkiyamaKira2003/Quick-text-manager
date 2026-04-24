@@ -1,6 +1,6 @@
 {
   "name": "quicktext",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Quick Text desktop app for instant snippets and productivity overlays.",
   "author": "Kira",
   "homepage": "https://github.com/AkiyamaKira2003/Quick-text-manager",
@@ -24,6 +24,7 @@
     "report:overlay-bundle": "node scripts/report-overlay-bundle.mjs",
     "qa:prod": "npm run build && npm run run:local",
     "build:standalone": "node scripts/prepare-standalone.cjs",
+    "assets:installer:allin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/split-installer-allin-art.ps1",
     "build:win-icon": "node scripts/prepare-win-icon.cjs",
     "build:python-service": "node scripts/build-python-service.mjs",
     "build:native-core": "node scripts/build-native-core.mjs",

@@ -44,6 +44,10 @@
              Source="Assets/install-hero.png"
              Stretch="UniformToFill"
              Opacity="0.18" />
+      <Image Grid.ColumnSpan="2"
+             Source="Assets/noise-overlay.png"
+             Stretch="UniformToFill"
+             Opacity="0.08" />
       <Rectangle Grid.ColumnSpan="2">
         <Rectangle.Fill>
           <RadialGradientBrush Center="0.78,0.46" GradientOrigin="0.78,0.46" RadiusX="0.78" RadiusY="0.72">
@@ -161,28 +165,50 @@
                       Click="BrowseInstallPath" />
             </Grid>
 
-            <TextBlock x:Name="StatusText"
-                       Text="Ready to install."
-                       Margin="0,24,0,0"
-                       Foreground="#8CEEFF"
-                       FontFamily="Bahnschrift"
-                       FontSize="14"
-                       FontWeight="Bold" />
-            <ProgressBar x:Name="InstallProgress"
-                         Height="10"
-                         Minimum="0"
-                         Maximum="100"
-                         Value="0"
-                         Margin="0,10,0,0"
-                         Foreground="#5EE7FF"
-                         Background="#10192B"
-                         BorderBrush="#2B4168" />
-            <TextBlock x:Name="ProgressText"
-                       Text="Waiting for confirmation"
-                       Margin="0,10,0,0"
-                       Foreground="#7D8BA3"
-                       FontFamily="Segoe UI"
-                       FontSize="13" />
+            <Grid Margin="0,22,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="82" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <Border Width="68"
+                      Height="68"
+                      Background="#E807101F"
+                      BorderBrush="#2B77B8"
+                      BorderThickness="1"
+                      CornerRadius="34"
+                      HorizontalAlignment="Left"
+                      ClipToBounds="True">
+                <Image Source="Assets/progress-core.png"
+                       Stretch="UniformToFill"
+                       Opacity="0.9" />
+              </Border>
+
+              <StackPanel Grid.Column="1"
+                          VerticalAlignment="Center">
+                <TextBlock x:Name="StatusText"
+                           Text="Ready to install."
+                           Foreground="#8CEEFF"
+                           FontFamily="Bahnschrift"
+                           FontSize="14"
+                           FontWeight="Bold" />
+                <ProgressBar x:Name="InstallProgress"
+                             Height="10"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="0"
+                             Margin="0,10,0,0"
+                             Foreground="#5EE7FF"
+                             Background="#10192B"
+                             BorderBrush="#2B4168" />
+                <TextBlock x:Name="ProgressText"
+                           Text="Waiting for confirmation"
+                           Margin="0,10,0,0"
+                           Foreground="#7D8BA3"
+                           FontFamily="Segoe UI"
+                           FontSize="13" />
+              </StackPanel>
+            </Grid>
           </StackPanel>
         </Border>
 
@@ -220,11 +246,16 @@
                 BorderThickness="1"
                 CornerRadius="34"
                 Effect="{StaticResource NeonPinkShadow}" />
-        <Image Source="Assets/install-hero.png"
+        <Image x:Name="HeroImage"
+               Source="Assets/install-hero.png"
                Stretch="UniformToFill"
                Margin="1"
                ClipToBounds="True"
                Opacity="0.96" />
+        <Image Source="Assets/frame-overlay.png"
+               Stretch="Fill"
+               Margin="18"
+               Opacity="0.58" />
         <Rectangle>
           <Rectangle.Fill>
             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -233,15 +264,13 @@
             </LinearGradientBrush>
           </Rectangle.Fill>
         </Rectangle>
-        <TextBlock Text="QUICK TEXT MODULE"
-                   HorizontalAlignment="Left"
-                   VerticalAlignment="Bottom"
-                   Margin="36,0,0,44"
-                   Foreground="#EAFBFF"
-                   FontFamily="Bahnschrift"
-                   FontSize="22"
-                   FontWeight="Bold"
-                   Effect="{StaticResource NeonCyanShadow}" />
+        <Image x:Name="ModuleCardImage"
+               Source="Assets/quick-text-module-card.png"
+               Width="430"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Bottom"
+               Margin="0,0,0,34"
+               Effect="{StaticResource NeonCyanShadow}" />
       </Grid>
     </Grid>
   </Border>

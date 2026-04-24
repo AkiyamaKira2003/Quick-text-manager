@@ -2,6 +2,14 @@
 
 Drop custom artwork in this folder before running `npm run build:win-icon`, `npm run dist:folder`, or `npm run dist:win`.
 
+If you are using the labeled all-in-one source image, place it at repository root as `allin.png` and run:
+
+```powershell
+npm run assets:installer:allin
+```
+
+That command refreshes this folder from the matching Kira LC bootstrapper artwork.
+
 Supported files:
 
 - `sidebar.png`, `sidebar.jpg`, `sidebar.jpeg`, or `sidebar.bmp`: main left installer poster art.

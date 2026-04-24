@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using Forms = System.Windows.Forms;
 
 namespace QuickText.Setup;
@@ -15,6 +16,9 @@ public partial class MainWindow
 
     private bool _installComplete;
     private bool _installing;
+    private const string InstallHeroSource = "pack://application:,,,/Assets/install-hero.png";
+    private const string SuccessHeroSource = "pack://application:,,,/Assets/success-hero.png";
+    private const string ErrorHeroSource = "pack://application:,,,/Assets/error-hero.png";
 
     public MainWindow()
     {
@@ -86,6 +90,8 @@ public partial class MainWindow
         _installing = true;
         InstallButton.IsEnabled = false;
         InstallPathBox.IsEnabled = false;
+        HeroImage.Source = LoadAssetImage(InstallHeroSource);
+        ModuleCardImage.Opacity = 1;
         StatusText.Text = "Installing Quick Text module...";
         ProgressText.Text = "Preparing Kira LC setup engine";
         InstallProgress.Value = 6;
@@ -109,6 +115,8 @@ public partial class MainWindow
 
             _installComplete = true;
             InstallProgress.Value = 100;
+            HeroImage.Source = LoadAssetImage(SuccessHeroSource);
+            ModuleCardImage.Opacity = 0;
             StatusText.Text = "Quick Text is ready inside Kira LC.";
             ProgressText.Text = "Install complete";
             StepText.Text = "Module installed: Quick Text";
@@ -117,6 +125,8 @@ public partial class MainWindow
         catch (Exception error)
         {
             StatusText.Text = "Install failed.";
+            HeroImage.Source = LoadAssetImage(ErrorHeroSource);
+            ModuleCardImage.Opacity = 0;
             ProgressText.Text = error.Message;
             System.Windows.MessageBox.Show(
                 error.Message,
@@ -130,6 +140,11 @@ public partial class MainWindow
             InstallButton.IsEnabled = true;
             InstallPathBox.IsEnabled = true;
         }
+    }
+
+    private static BitmapImage LoadAssetImage(string source)
+    {
+        return new BitmapImage(new Uri(source, UriKind.Absolute));
     }
 
     private void LaunchQuickText()
