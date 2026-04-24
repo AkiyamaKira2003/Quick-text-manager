@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
@@ -496,58 +497,38 @@ public partial class MainWindow
             return;
         }
 
-        var uninstallerPath = FindUninstallerPath();
-        if (uninstallerPath is null)
+        string installPath;
+        try
         {
-            AddActivity("Remove failed: uninstaller was not found.", "error");
-            TransitionToState(SetupState.Error, "Uninstaller not found.");
-            ProgressText.Text = "Could not find the NSIS uninstaller in the selected install folder.";
-            System.Windows.MessageBox.Show(
-                "Could not find the Quick Text uninstaller in the selected install folder.",
-                "Kira LC Setup",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
+            installPath = ValidateQuickTextInstallPathForRemoval();
         }
-
-        var confirm = System.Windows.MessageBox.Show(
-            "Remove Quick Text from this Kira LC install path?",
-            "Kira LC Setup",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (confirm != MessageBoxResult.Yes)
+        catch (Exception error)
         {
-            AddActivity("Remove cancelled by user.", "info");
+            AddActivity($"Remove blocked: {error.Message}", "warning");
+            TransitionToState(SetupState.Error, "Quick Text cannot be removed from this path.");
+            ProgressText.Text = error.Message;
             return;
         }
 
         _installing = true;
-        AddActivity("Remove started.", "info");
-        TransitionToState(SetupState.Removing, "Removing Quick Text module...");
-        BeginTransferUi("Uninstalling Quick Text", GetDirectorySize(InstallPathBox.Text));
+        AddActivity("Remove started inside Kira LC.", "info");
+        TransitionToState(SetupState.Removing, "Removing Quick Text inside Kira LC...");
+        BeginTransferUi("Uninstalling Quick Text", GetDirectorySize(installPath));
 
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(uninstallerPath)
+            var transferProgress = new Progress<(double Progress, string Detail)>(update =>
             {
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(uninstallerPath) ?? InstallPathBox.Text,
+                UpdateTransferUi(update.Progress, update.Detail);
+                ProgressText.Text = update.Detail;
             });
 
-            if (process is null)
-            {
-                throw new InvalidOperationException("Could not start the Quick Text uninstaller.");
-            }
-
-            await TrackUninstallProgressAsync(process).ConfigureAwait(true);
+            await RemoveQuickTextInProcessAsync(installPath, transferProgress).ConfigureAwait(true);
             _installComplete = IsQuickTextInstalled();
 
             if (_installComplete)
             {
-                AddActivity("Remove finished but Quick Text still exists. The uninstall may have been cancelled.", "warning");
-                TransitionToState(SetupState.Success, "Quick Text is still installed.");
-                return;
+                throw new IOException("QuickText.exe is still present after uninstall.");
             }
 
             AddActivity("Quick Text removed.", "success");
@@ -560,11 +541,6 @@ public partial class MainWindow
             TransitionToState(SetupState.Error, "Remove failed.");
             ProgressText.Text = error.Message;
             TransferStatusText.Text = error.Message;
-            System.Windows.MessageBox.Show(
-                error.Message,
-                "Kira LC Setup",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
         }
         finally
         {
@@ -574,20 +550,24 @@ public partial class MainWindow
         }
     }
 
-    private async Task TrackUninstallProgressAsync(Process process)
+    private static Task RemoveQuickTextInProcessAsync(
+        string installPath,
+        IProgress<(double Progress, string Detail)> progress)
     {
-        var progress = 0.06;
-        UpdateTransferUi(progress, "Starting uninstaller");
-
-        while (!process.HasExited)
+        return Task.Run(() =>
         {
-            progress = Math.Min(0.94, progress + 0.024);
-            UpdateTransferUi(progress, "Removing files and shortcuts");
-            await Task.Delay(260).ConfigureAwait(true);
-        }
+            progress.Report((0.06, "Stopping running Quick Text"));
+            StopQuickTextProcesses(installPath);
 
-        await process.WaitForExitAsync().ConfigureAwait(true);
-        UpdateTransferUi(1, "Uninstall complete");
+            progress.Report((0.14, "Removing shortcuts"));
+            DeleteKnownShortcuts();
+
+            progress.Report((0.22, "Cleaning install records"));
+            DeleteQuickTextRegistryEntries(installPath);
+
+            DeleteInstallDirectory(installPath, progress, 0.28, 0.98);
+            progress.Report((1, "Uninstall complete"));
+        });
     }
 
     private void BeginTransferUi(string title, long totalBytes)
@@ -698,6 +678,345 @@ public partial class MainWindow
         }
 
         return total;
+    }
+
+    private string ValidateQuickTextInstallPathForRemoval()
+    {
+        if (string.IsNullOrWhiteSpace(InstallPathBox.Text))
+        {
+            throw new InvalidOperationException("Select the Quick Text install folder before uninstalling.");
+        }
+
+        var installPath = Path.GetFullPath(InstallPathBox.Text.Trim());
+        var executablePath = Path.Combine(installPath, "QuickText.exe");
+
+        if (!Directory.Exists(installPath) || !File.Exists(executablePath))
+        {
+            throw new InvalidOperationException("The selected folder does not contain QuickText.exe.");
+        }
+
+        var root = Path.GetPathRoot(installPath);
+        if (string.IsNullOrWhiteSpace(root) ||
+            string.Equals(NormalizeDirectoryPath(installPath), NormalizeDirectoryPath(root), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The install folder points to a drive root and cannot be removed.");
+        }
+
+        var currentProcessPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(currentProcessPath) && IsPathInDirectory(currentProcessPath, installPath))
+        {
+            throw new InvalidOperationException("Move KiraLC.Setup outside the install folder before uninstalling.");
+        }
+
+        InstallPathBox.Text = installPath;
+        return installPath;
+    }
+
+    private static void StopQuickTextProcesses(string installPath)
+    {
+        var seenProcessIds = new HashSet<int>();
+        foreach (var processName in new[] { "QuickText", "Quick Text" })
+        {
+            foreach (var process in Process.GetProcessesByName(processName))
+            {
+                using (process)
+                {
+                    if (!seenProcessIds.Add(process.Id))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var processPath = process.MainModule?.FileName;
+                        if (string.IsNullOrWhiteSpace(processPath) || !IsPathInDirectory(processPath, installPath))
+                        {
+                            continue;
+                        }
+
+                        process.CloseMainWindow();
+                        if (!process.WaitForExit(1500))
+                        {
+                            process.Kill(entireProcessTree: true);
+                            process.WaitForExit(3000);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+        }
+    }
+
+    private static void DeleteKnownShortcuts()
+    {
+        var shortcutNames = new[]
+        {
+            "Quick Text.lnk",
+            "QuickText.lnk",
+            "Kira LC Quick Text.lnk",
+            "Uninstall Quick Text.lnk",
+            "Uninstall QuickText.lnk",
+        };
+
+        var currentPrograms = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
+            "Programs");
+        var commonPrograms = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
+            "Programs");
+        var shortcutFolders = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
+            currentPrograms,
+            commonPrograms,
+            Path.Combine(currentPrograms, "Quick Text"),
+            Path.Combine(commonPrograms, "Quick Text"),
+        };
+
+        foreach (var folder in shortcutFolders.Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var shortcutName in shortcutNames)
+            {
+                TryDeleteFile(Path.Combine(folder, shortcutName));
+            }
+        }
+
+        TryDeleteDirectoryIfEmpty(Path.Combine(currentPrograms, "Quick Text"));
+        TryDeleteDirectoryIfEmpty(Path.Combine(commonPrograms, "Quick Text"));
+    }
+
+    private static void DeleteQuickTextRegistryEntries(string installPath)
+    {
+        const string uninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
+
+        DeleteQuickTextRegistryEntries(RegistryHive.CurrentUser, RegistryView.Default, uninstallRegistryPath, installPath);
+        DeleteQuickTextRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry64, uninstallRegistryPath, installPath);
+        DeleteQuickTextRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry32, uninstallRegistryPath, installPath);
+    }
+
+    private static void DeleteQuickTextRegistryEntries(
+        RegistryHive hive,
+        RegistryView view,
+        string uninstallRegistryPath,
+        string installPath)
+    {
+        try
+        {
+            using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+            using var uninstallKey = baseKey.OpenSubKey(uninstallRegistryPath, writable: true);
+            if (uninstallKey is null)
+            {
+                return;
+            }
+
+            foreach (var subKeyName in uninstallKey.GetSubKeyNames())
+            {
+                try
+                {
+                    using var appKey = uninstallKey.OpenSubKey(subKeyName);
+                    if (appKey is null || !IsQuickTextRegistryEntry(appKey, installPath))
+                    {
+                        continue;
+                    }
+
+                    uninstallKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static bool IsQuickTextRegistryEntry(RegistryKey appKey, string installPath)
+    {
+        var displayName = appKey.GetValue("DisplayName")?.ToString();
+        if (string.Equals(displayName, "Quick Text", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(displayName, "QuickText", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(displayName, "Kira LC Quick Text", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return RegistryTextReferencesInstallPath(appKey.GetValue("InstallLocation")?.ToString(), installPath) ||
+            RegistryTextReferencesInstallPath(appKey.GetValue("DisplayIcon")?.ToString(), installPath) ||
+            RegistryTextReferencesInstallPath(appKey.GetValue("UninstallString")?.ToString(), installPath) ||
+            RegistryTextReferencesInstallPath(appKey.GetValue("QuietUninstallString")?.ToString(), installPath);
+    }
+
+    private static bool RegistryTextReferencesInstallPath(string? value, string installPath)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var expandedValue = Environment.ExpandEnvironmentVariables(value);
+        return expandedValue.Contains(installPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void DeleteInstallDirectory(
+        string installPath,
+        IProgress<(double Progress, string Detail)> progress,
+        double startProgress,
+        double endProgress)
+    {
+        var files = EnumerateFilesForRemoval(installPath);
+        var totalWork = Math.Max(1, files.Sum(file => GetFileLengthForRemoval(file) + 1));
+        long completedWork = 0;
+
+        foreach (var file in files)
+        {
+            var fileWork = GetFileLengthForRemoval(file) + 1;
+            TryDeleteFile(file);
+            completedWork += fileWork;
+
+            var progressValue = startProgress + ((endProgress - startProgress) * completedWork / totalWork);
+            progress.Report((Math.Min(endProgress, progressValue), "Removing installed files"));
+        }
+
+        progress.Report((Math.Min(0.99, endProgress), "Removing install folder"));
+        foreach (var directory in EnumerateDirectoriesForRemoval(installPath).OrderByDescending(path => path.Length))
+        {
+            TryDeleteDirectoryIfEmpty(directory);
+        }
+
+        if (Directory.Exists(installPath))
+        {
+            try
+            {
+                Directory.Delete(installPath, recursive: true);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        var executablePath = Path.Combine(installPath, "QuickText.exe");
+        if (File.Exists(executablePath))
+        {
+            throw new IOException("Could not remove QuickText.exe. Close Quick Text and try again.");
+        }
+
+        if (Directory.Exists(installPath) && Directory.EnumerateFileSystemEntries(installPath).Any())
+        {
+            throw new IOException("Some Quick Text files could not be removed. Close running tools and try again.");
+        }
+    }
+
+    private static List<string> EnumerateFilesForRemoval(string installPath)
+    {
+        var files = new List<string>();
+        var pending = new Stack<string>();
+        pending.Push(installPath);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            try
+            {
+                files.AddRange(Directory.EnumerateFiles(current));
+
+                foreach (var child in Directory.EnumerateDirectories(current))
+                {
+                    pending.Push(child);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        return files;
+    }
+
+    private static List<string> EnumerateDirectoriesForRemoval(string installPath)
+    {
+        var directories = new List<string> { installPath };
+        var pending = new Stack<string>();
+        pending.Push(installPath);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            try
+            {
+                foreach (var child in Directory.EnumerateDirectories(current))
+                {
+                    directories.Add(child);
+                    pending.Push(child);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        return directories;
+    }
+
+    private static long GetFileLengthForRemoval(string file)
+    {
+        try
+        {
+            return new FileInfo(file).Length;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
+    private static void TryDeleteFile(string file)
+    {
+        try
+        {
+            if (!File.Exists(file))
+            {
+                return;
+            }
+
+            File.SetAttributes(file, FileAttributes.Normal);
+            File.Delete(file);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static void TryDeleteDirectoryIfEmpty(string directory)
+    {
+        try
+        {
+            if (!Directory.Exists(directory) || Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                return;
+            }
+
+            File.SetAttributes(directory, FileAttributes.Normal);
+            Directory.Delete(directory);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static bool IsPathInDirectory(string path, string directory)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var fullDirectory = NormalizeDirectoryPath(directory) + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(fullDirectory, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeDirectoryPath(string path)
+    {
+        return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     private static string FormatBytes(double bytes)
@@ -885,7 +1204,7 @@ public partial class MainWindow
                 SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
                 LaunchButtonLabel.Text = "REMOVING";
                 StatusText.Text = detail ?? "Removing Quick Text module...";
-                ProgressText.Text = "Waiting for the uninstaller";
+                ProgressText.Text = "Removing files inside Kira LC";
                 InstallProgress.Value = 18;
                 StepText.Text = "Module removal requested: Quick Text";
                 QuickTextModuleState.Text = "Removing";
@@ -1087,35 +1406,6 @@ public partial class MainWindow
     private string GetQuickTextExecutablePath()
     {
         return Path.Combine(InstallPathBox.Text, "QuickText.exe");
-    }
-
-    private string? FindUninstallerPath()
-    {
-        var installPath = InstallPathBox.Text;
-        if (string.IsNullOrWhiteSpace(installPath) || !Directory.Exists(installPath))
-        {
-            return null;
-        }
-
-        foreach (var candidate in new[]
-        {
-            "Uninstall Quick Text.exe",
-            "Uninstall QuickText.exe",
-            "Quick Text Uninstaller.exe",
-            "Uninstall.exe",
-        })
-        {
-            var candidatePath = Path.Combine(installPath, candidate);
-            if (File.Exists(candidatePath))
-            {
-                return candidatePath;
-            }
-        }
-
-        return Directory
-            .EnumerateFiles(installPath, "Uninstall*.exe", SearchOption.TopDirectoryOnly)
-            .OrderBy(path => Path.GetFileName(path).Length)
-            .FirstOrDefault();
     }
 
     private bool LaunchQuickText(string source)
