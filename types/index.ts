@@ -376,6 +376,7 @@ export interface OverlayInteractiveZoneRect {
 
 export interface OverlayInteractiveZonesPayload {
   quickAdd?: OverlayInteractiveZoneRect | null
+  quickAddActive?: boolean
 }
 
 declare global {

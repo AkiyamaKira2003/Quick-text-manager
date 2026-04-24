@@ -402,6 +402,7 @@ let altF4BlockShortcutRegistered = false
 let overlayMousePassThrough = true
 let overlayInteractiveZones = {
   quickAdd: null,
+  quickAddActive: false,
 }
 let overlaySmartZonePollTimer = null
 let overlaySmartZoneInsideLast = false
@@ -5059,6 +5060,7 @@ function createOverlayWindow() {
     clearOverlaySmartZoneMonitor()
     overlayInteractiveZones = {
       quickAdd: null,
+      quickAddActive: false,
     }
     overlayWindow = null
   })
@@ -5401,6 +5403,7 @@ function normalizeOverlayInteractiveZones(input) {
 
   return {
     quickAdd: normalizeRect(source.quickAdd),
+    quickAddActive: source.quickAddActive === true,
   }
 }
 
@@ -5429,6 +5432,7 @@ function getQuickAddFallbackZone(settings) {
 function isCursorInsideOverlayInteractiveZones() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return false
   if (!overlayWindow.isVisible()) return false
+  if (overlayInteractiveZones.quickAddActive) return true
   const settings = ensureSettings()
   const quickAdd = overlayInteractiveZones.quickAdd || getQuickAddFallbackZone(settings)
   if (!quickAdd) return false
@@ -5448,7 +5452,7 @@ function isCursorInsideOverlayInteractiveZones() {
 
 function evaluateOverlaySmartZonePassThrough() {
   const settings = ensureSettings()
-  if (!settings.overlaySmartClickThrough && !overlayInteractiveZones.quickAdd) return
+  if (!settings.overlaySmartClickThrough && !overlayInteractiveZones.quickAdd && !overlayInteractiveZones.quickAddActive) return
   if (settings.overlayInteractive) return
   if (!settings.appEnabled || !settings.overlayVisible) return
   if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return
@@ -5465,7 +5469,7 @@ function syncOverlaySmartZoneMonitor() {
   if (settings.overlayInteractive) return
   if (!settings.appEnabled || !settings.overlayVisible) return
   if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return
-  if (!settings.overlaySmartClickThrough && !overlayInteractiveZones.quickAdd) return
+  if (!settings.overlaySmartClickThrough && !overlayInteractiveZones.quickAdd && !overlayInteractiveZones.quickAddActive) return
 
   evaluateOverlaySmartZonePassThrough()
   overlaySmartZonePollTimer = setInterval(() => {
@@ -6545,6 +6549,7 @@ function cleanupRuntime() {
   overlayMousePassThrough = true
   overlayInteractiveZones = {
     quickAdd: null,
+    quickAddActive: false,
   }
   overlaySmartZoneInsideLast = false
   overlayBoundsSignature = ''
@@ -6910,6 +6915,7 @@ const IPC_SCHEMAS = {
           z.null(),
         ])
         .optional(),
+      quickAddActive: z.boolean().optional(),
     })
     .passthrough(),
 }

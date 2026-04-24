@@ -436,6 +436,7 @@ export default function OverlayUnifiedToolsPanel({
   const [quickViInput, setQuickViInput] = useState('')
   const [quickAddError, setQuickAddError] = useState('')
   const [isQuickAddBusy, setIsQuickAddBusy] = useState(false)
+  const [quickAddInputActive, setQuickAddInputActive] = useState(false)
   const quickAddContainerRef = useRef<HTMLElement | null>(null)
   const quickAddInputRef = useRef<HTMLInputElement | null>(null)
   const quickAddDragStateRef = useRef<{
@@ -1133,13 +1134,16 @@ export default function OverlayUnifiedToolsPanel({
         selectedIndex: newItems.length - 1,
       })
       setQuickViInput('')
+      blurQuickAddInput()
+      setQuickAddInputActive(false)
+      onOverlayTextInteractionChange?.(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : t(language, 'tm.quickAddTranslateFailed')
       setQuickAddError(message)
     } finally {
       setIsQuickAddBusy(false)
     }
-  }, [isQuickAddBusy, language, quickViInput, settings.items, translateViToKo, updateSettings])
+  }, [blurQuickAddInput, isQuickAddBusy, language, onOverlayTextInteractionChange, quickViInput, settings.items, translateViToKo, updateSettings])
 
   const startQuickAddDrag = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -3701,13 +3705,13 @@ export default function OverlayUnifiedToolsPanel({
     if (!window.electronAPI?.setOverlayInteractiveZones) return
 
     const quickAdd = getQuickAddInteractiveZone()
-    void window.electronAPI.setOverlayInteractiveZones({ quickAdd }).catch(() => {})
-  }, [getQuickAddInteractiveZone])
+    void window.electronAPI.setOverlayInteractiveZones({ quickAdd, quickAddActive: !!quickAdd && quickAddInputActive }).catch(() => {})
+  }, [getQuickAddInteractiveZone, quickAddInputActive])
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!window.electronAPI?.setOverlayInteractiveZones) return
     return () => {
-      void window.electronAPI?.setOverlayInteractiveZones({ quickAdd: null }).catch(() => {})
+      void window.electronAPI?.setOverlayInteractiveZones({ quickAdd: null, quickAddActive: false }).catch(() => {})
     }
   }, [])
   const panelPointerClass = displayMode === 'window' || isOverlayEditMode ? 'pointer-events-auto' : 'pointer-events-none'
@@ -3770,6 +3774,7 @@ export default function OverlayUnifiedToolsPanel({
 
     const handleWindowBlur = () => {
       blurQuickAddInput()
+      setQuickAddInputActive(false)
       onOverlayTextInteractionChange?.(false)
     }
 
@@ -3848,12 +3853,25 @@ export default function OverlayUnifiedToolsPanel({
                 if (quickAddError) setQuickAddError('')
               }}
               onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  blurQuickAddInput()
+                  setQuickAddInputActive(false)
+                  onOverlayTextInteractionChange?.(false)
+                  return
+                }
                 if (event.key !== 'Enter') return
                 event.preventDefault()
                 void handleQuickAdd()
               }}
-              onFocus={() => onOverlayTextInteractionChange?.(true)}
-              onBlur={() => onOverlayTextInteractionChange?.(false)}
+              onFocus={() => {
+                setQuickAddInputActive(true)
+                onOverlayTextInteractionChange?.(true)
+              }}
+              onBlur={() => {
+                setQuickAddInputActive(false)
+                onOverlayTextInteractionChange?.(false)
+              }}
               placeholder={t(language, 'tm.quickAddPlaceholder')}
               className="h-9 min-w-0 flex-1 rounded-lg qt-input px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--qt-primary)]"
             />

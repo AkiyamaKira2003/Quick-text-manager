@@ -190,7 +190,7 @@ function OverlayPageComponent() {
   const [isOpacityEditing, setIsOpacityEditing] = useState(false)
   const [isToolboxOpen, setIsToolboxOpen] = useState(false)
   const [isHudOpacityOpen, setIsHudOpacityOpen] = useState(false)
-  const [, setOverlayTextInteractionActive] = useState(false)
+  const [overlayTextInteractionActive, setOverlayTextInteractionActive] = useState(false)
   const [captureProbeToken, setCaptureProbeToken] = useState(0)
   const [imageCardState, setImageCardState] = useState<OverlayImageCardState>(() => createEmptyImageCardState())
   const [imageCardDraftOffset, setImageCardDraftOffset] = useState<{ x: number; y: number } | null>(null)
@@ -791,14 +791,16 @@ function OverlayPageComponent() {
   useEffect(() => {
     if (!settings) return
     const shouldCaptureOverlay = settings.overlayInteractive && settings.appEnabled
+    const shouldCaptureTextInput = overlayTextInteractionActive && settings.appEnabled && settings.overlayVisible
 
-    if (shouldCaptureOverlay) {
+    if (shouldCaptureOverlay || shouldCaptureTextInput) {
       setOverlayPassThrough(false)
       return
     }
     setOverlayPassThrough(true)
   }, [
     setOverlayPassThrough,
+    overlayTextInteractionActive,
     settings?.appEnabled,
     settings?.overlayVisible,
     settings?.overlayInteractive,
