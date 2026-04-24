@@ -268,6 +268,9 @@
                       Width="244"
                       Height="54"
                       Style="{StaticResource GoldActionButton}"
+                      Tag="Primary"
+                      MouseEnter="PreviewActionVisual"
+                      MouseLeave="RestoreActionVisual"
                       Click="InstallOrLaunch">
                 <TextBlock x:Name="LaunchButtonLabel"
                            Text="▶ LAUNCH"
@@ -298,7 +301,13 @@
                    PopupAnimation="Fade">
               <Border Width="300" CornerRadius="14" Background="#F0131519" BorderBrush="#2DFFFFFF" BorderThickness="1" Padding="10">
                 <StackPanel>
-                  <Button Style="{StaticResource NakedButton}" Height="46" Click="OpenInstallDialog">
+                  <Button x:Name="InstallMenuButton"
+                          Style="{StaticResource NakedButton}"
+                          Height="46"
+                          Tag="Install"
+                          MouseEnter="PreviewActionVisual"
+                          MouseLeave="RestoreActionVisual"
+                          Click="OpenInstallDialog">
                     <Border CornerRadius="10" Background="#16FFFFFF" Padding="12,8">
                       <Grid>
                         <TextBlock x:Name="MenuInstallLabel" Text="Install Quick Text" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
@@ -306,17 +315,17 @@
                       </Grid>
                     </Border>
                   </Button>
-                  <Button x:Name="LaunchMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,7,0,0" Click="LaunchFromMenu">
+                  <Button x:Name="LaunchMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,7,0,0" Tag="Launch" MouseEnter="PreviewActionVisual" MouseLeave="RestoreActionVisual" Click="LaunchFromMenu">
                     <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
                       <TextBlock Text="Launch" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
                     </Border>
                   </Button>
-                  <Button x:Name="RepairMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="RepairFromMenu">
+                  <Button x:Name="RepairMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Tag="Repair" MouseEnter="PreviewActionVisual" MouseLeave="RestoreActionVisual" Click="RepairFromMenu">
                     <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
                       <TextBlock Text="Repair" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
                     </Border>
                   </Button>
-                  <Button x:Name="UninstallMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="UninstallFromMenu">
+                  <Button x:Name="UninstallMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Tag="Uninstall" MouseEnter="PreviewActionVisual" MouseLeave="RestoreActionVisual" Click="UninstallFromMenu">
                     <Border CornerRadius="10" Background="#19FF4655" Padding="12,0">
                       <TextBlock Text="Uninstall" Foreground="#FFD9DE" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
                     </Border>

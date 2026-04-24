@@ -73,7 +73,7 @@ public partial class MainWindow
         AddActivity("Kira LC setup shell ready.", "info");
         TransitionToState(
             _installComplete ? SetupState.Success : SetupState.Idle,
-            _installComplete ? "Quick Text is already installed." : "Ready to install Quick Text.");
+            _installComplete ? "Quick Text is already installed." : "Quick Text is not installed.");
     }
 
     private void DragWindow(object sender, MouseButtonEventArgs e)
@@ -318,6 +318,48 @@ public partial class MainWindow
     {
         ActionMenuPopup.IsOpen = false;
         await RemoveQuickTextAsync().ConfigureAwait(true);
+    }
+
+    private void PreviewActionVisual(object sender, RoutedEventArgs e)
+    {
+        if (_installing)
+        {
+            return;
+        }
+
+        var action = (sender as FrameworkElement)?.Tag?.ToString() ?? string.Empty;
+        _installComplete = IsQuickTextInstalled();
+
+        if (action == "Primary")
+        {
+            action = _installComplete ? "Launch" : "Install";
+        }
+        else if (ReferenceEquals(sender, InstallMenuButton) && _installComplete)
+        {
+            action = "Repair";
+        }
+
+        switch (action)
+        {
+            case "Install":
+                SetVisualState(InstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                break;
+            case "Launch":
+            case "Repair":
+                SetVisualState(SuccessHeroSource, SuccessCoreSource, SuccessSceneSource);
+                break;
+            case "Uninstall":
+                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                break;
+        }
+    }
+
+    private void RestoreActionVisual(object sender, RoutedEventArgs e)
+    {
+        if (!_installing)
+        {
+            RestoreCurrentStateVisual();
+        }
     }
 
     private async Task InstallQuickTextAsync()
@@ -600,13 +642,13 @@ public partial class MainWindow
         switch (state)
         {
             case SetupState.Idle:
-                SetVisualState(InstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
                 LaunchButtonLabel.Text = "INSTALL";
-                StatusText.Text = detail ?? "Ready to install Quick Text.";
+                StatusText.Text = detail ?? "Quick Text is not installed.";
                 ProgressText.Text = "Waiting for launch confirmation";
                 InstallProgress.Value = 0;
                 StepText.Text = "Engine: embedded Quick Text setup core";
-                QuickTextModuleState.Text = "Ready";
+                QuickTextModuleState.Text = "Missing";
                 break;
             case SetupState.Launching:
                 SetVisualState(SuccessHeroSource, SuccessCoreSource, SuccessSceneSource);
@@ -657,6 +699,29 @@ public partial class MainWindow
         UpdateActionAvailability();
     }
 
+    private void RestoreCurrentStateVisual()
+    {
+        switch (_currentState)
+        {
+            case SetupState.Idle:
+                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                break;
+            case SetupState.Launching:
+            case SetupState.Success:
+                SetVisualState(SuccessHeroSource, SuccessCoreSource, SuccessSceneSource);
+                break;
+            case SetupState.Loading:
+                SetVisualState(InstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                break;
+            case SetupState.Error:
+                SetVisualState(ErrorHeroSource, ErrorCoreSource, ErrorSceneSource);
+                break;
+            case SetupState.Removing:
+                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                break;
+        }
+    }
+
     private void SetStatusDot(SetupState state)
     {
         var color = state switch
@@ -683,6 +748,7 @@ public partial class MainWindow
 
         var isInstalled = _installComplete || IsQuickTextInstalled();
         MenuInstallLabel.Text = isInstalled ? "Repair Quick Text" : "Install Quick Text";
+        InstallMenuButton.Tag = isInstalled ? "Repair" : "Install";
         LaunchMenuButton.IsEnabled = !busy && isInstalled;
         LaunchMenuButton.Opacity = !busy && isInstalled ? 1 : 0.42;
         RepairMenuButton.IsEnabled = !busy && isInstalled;
