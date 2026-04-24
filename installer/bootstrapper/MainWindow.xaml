@@ -71,14 +71,38 @@
         </Grid.RowDefinitions>
 
         <StackPanel>
-          <TextBlock Text="KIRA LC"
-                     Foreground="#F7FCFF"
-                     FontFamily="Bahnschrift SemiBold"
-                     FontSize="64"
-                     FontWeight="Bold"
-                     Effect="{StaticResource NeonCyanShadow}" />
+          <Border Width="430"
+                  Height="176"
+                  HorizontalAlignment="Left"
+                  Background="#D9050812"
+                  BorderBrush="#394C69"
+                  BorderThickness="1"
+                  CornerRadius="22"
+                  ClipToBounds="True"
+                  Effect="{StaticResource NeonPinkShadow}">
+            <Grid>
+              <Image Source="Assets/kira-lc-logo.png"
+                     Stretch="UniformToFill"
+                     RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle>
+                <Rectangle.Fill>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#44050812" Offset="0" />
+                    <GradientStop Color="#00050812" Offset="0.52" />
+                    <GradientStop Color="#66050812" Offset="1" />
+                  </LinearGradientBrush>
+                </Rectangle.Fill>
+              </Rectangle>
+            </Grid>
+          </Border>
+          <TextBlock Text="KIRA LC CLIENT"
+                     Margin="2,14,0,0"
+                     Foreground="#F5D7A5"
+                     FontFamily="Bahnschrift"
+                     FontSize="13"
+                     FontWeight="Bold" />
           <TextBlock Text="QUICK TEXT MODULE"
-                     Margin="2,26,0,0"
+                     Margin="2,6,0,0"
                      Foreground="#6EEBFF"
                      FontFamily="Bahnschrift"
                      FontSize="13"
