@@ -5755,11 +5755,6 @@ function syncElectronHotkeys(settings) {
           ['text.send_current', settings.sendHotkey],
         ]
 
-  // Add paste image hotkey if overlay is visible and image tool is enabled
-  if (settings.appEnabled && settings.overlayVisible && settings.overlayToolsShowImageTranslate) {
-    registrationPlan.push(['overlay.paste_image', 'Ctrl+V'])
-  }
-
   for (const [actionId, combo] of registrationPlan) {
     registerElectronHotkey(combo, actionId)
   }
