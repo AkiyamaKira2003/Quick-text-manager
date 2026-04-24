@@ -296,8 +296,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
           </Grid.RowDefinitions>
 
           <StackPanel>
@@ -305,11 +305,45 @@
             <TextBlock Text="Client shell / Quick Text module" Foreground="#A3FFFFFF" FontFamily="Segoe UI" FontSize="12" Margin="0,4,0,0" />
           </StackPanel>
 
-          <Border Grid.Row="1" Height="206" CornerRadius="16" Background="#0DFFFFFF" BorderBrush="#16FFFFFF" BorderThickness="1" ClipToBounds="True" Margin="0,18,0,0">
+          <Border Grid.Row="1" Height="430" CornerRadius="18" Background="#0B0B0D" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Margin="0,18,0,0">
             <Grid>
-              <Image x:Name="HeroImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Image x:Name="HeroImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.28" IsHitTestVisible="False" />
+              <Image x:Name="HeroImageA" Stretch="Uniform" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="HeroImageB" Stretch="Uniform" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Rectangle>
+                <Rectangle.Fill>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#00000000" Offset="0" />
+                    <GradientStop Color="#18000000" Offset="0.62" />
+                    <GradientStop Color="#D6080C0F" Offset="1" />
+                  </LinearGradientBrush>
+                </Rectangle.Fill>
+              </Rectangle>
+              <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.22" IsHitTestVisible="False" />
+              <Border HorizontalAlignment="Left"
+                      VerticalAlignment="Bottom"
+                      Margin="14"
+                      Padding="11,8"
+                      CornerRadius="16"
+                      Background="#D10A0D10"
+                      BorderBrush="#2DFFFFFF"
+                      BorderThickness="1">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <Ellipse x:Name="StatusDot"
+                           Width="9"
+                           Height="9"
+                           Fill="#D6AA4F"
+                           VerticalAlignment="Center" />
+                  <TextBlock x:Name="StatusText"
+                             Text="Ready to install."
+                             Foreground="#F2F2F2"
+                             FontFamily="Bahnschrift"
+                             FontSize="13"
+                             FontWeight="Bold"
+                             Margin="9,0,0,0"
+                             TextTrimming="CharacterEllipsis"
+                             MaxWidth="214" />
+                </StackPanel>
+              </Border>
             </Grid>
           </Border>
 
@@ -354,8 +388,9 @@
                        FontFamily="Bahnschrift"
                        FontSize="12"
                        FontWeight="Bold"
+                       Visibility="Collapsed"
                        Margin="0,18,0,0" />
-            <UniformGrid Columns="4" Rows="1" Margin="0,10,0,0">
+            <UniformGrid Columns="4" Rows="1" Margin="0,10,0,0" Visibility="Collapsed">
               <Border x:Name="InstallStateButton" Height="70" Margin="0,0,6,0" CornerRadius="10" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="InstallLifecycleClicked">
                 <Grid>
                   <Image Source="Assets/install-hero.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
@@ -400,53 +435,13 @@
                      FontFamily="Consolas"
                      FontSize="12" />
 
-            <Grid Margin="0,20,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="68" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Border Width="56" Height="56" CornerRadius="28" Background="#0DFFFFFF" ClipToBounds="True">
-                <Grid>
-                  <Image x:Name="CoreImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
-                  <Image x:Name="CoreImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
-                </Grid>
-              </Border>
-              <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                <TextBlock x:Name="StatusText" Text="Ready to install." Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
-                <ProgressBar x:Name="InstallProgress" Height="8" Minimum="0" Maximum="100" Value="0" Margin="0,8,0,0" Foreground="#D6AA4F" Background="#20252A" BorderBrush="#33FFFFFF" />
-                <TextBlock x:Name="ProgressText" Text="Waiting for launch confirmation" Foreground="#9FFFFFFF" FontFamily="Segoe UI" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" />
-              </StackPanel>
+            <Grid Visibility="Collapsed">
+              <Image x:Name="CoreImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="CoreImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+              <ProgressBar x:Name="InstallProgress" Height="8" Minimum="0" Maximum="100" Value="0" Foreground="#D6AA4F" Background="#20252A" BorderBrush="#33FFFFFF" />
+              <TextBlock x:Name="ProgressText" Text="Waiting for launch confirmation" Foreground="#9FFFFFFF" FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap" />
+              <StackPanel x:Name="ActivityLogPanel" />
             </Grid>
-
-            <TextBlock Text="C O R E  S T A T E S"
-                       Foreground="#8EFFFFFF"
-                       FontFamily="Bahnschrift"
-                       FontSize="11"
-                       FontWeight="Bold"
-                       Margin="0,18,0,0" />
-            <UniformGrid Columns="3" Rows="1" Margin="0,9,0,0">
-              <Border Height="44" Margin="0,0,8,0" CornerRadius="12" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True">
-                <Image Source="Assets/progress-core.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
-              </Border>
-              <Border Height="44" Margin="0,0,8,0" CornerRadius="12" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True">
-                <Image Source="Assets/success-core.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
-              </Border>
-              <Border Height="44" CornerRadius="12" Background="#0AFFFFFF" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True">
-                <Image Source="Assets/error-core.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
-              </Border>
-            </UniformGrid>
-
-            <TextBlock Text="A C T I V I T Y"
-                       Foreground="#8EFFFFFF"
-                       FontFamily="Bahnschrift"
-                       FontSize="11"
-                       FontWeight="Bold"
-                       Margin="0,14,0,0" />
-            <Border Height="112" CornerRadius="14" Background="#B80B1015" BorderBrush="#18FFFFFF" BorderThickness="1" Margin="0,8,0,0" ClipToBounds="True">
-              <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="ActivityLogPanel" Margin="10,8,10,0" />
-              </ScrollViewer>
-            </Border>
           </StackPanel>
 
           <TextBlock x:Name="StepText"
@@ -455,6 +450,7 @@
                      Foreground="#7DFFFFFF"
                      FontFamily="Segoe UI"
                      FontSize="12"
+                     Visibility="Collapsed"
                      TextWrapping="Wrap" />
         </Grid>
       </Border>

@@ -456,6 +456,7 @@ public partial class MainWindow
     private void TransitionToState(SetupState state, string? detail = null)
     {
         _currentState = state;
+        SetStatusDot(state);
 
         switch (state)
         {
@@ -515,6 +516,19 @@ public partial class MainWindow
         }
 
         UpdateActionAvailability();
+    }
+
+    private void SetStatusDot(SetupState state)
+    {
+        var color = state switch
+        {
+            SetupState.Launching or SetupState.Success => MediaColor.FromRgb(56, 242, 122),
+            SetupState.Loading or SetupState.Removing => MediaColor.FromRgb(214, 170, 79),
+            SetupState.Error => MediaColor.FromRgb(255, 70, 85),
+            _ => MediaColor.FromRgb(92, 200, 255),
+        };
+
+        StatusDot.Fill = new SolidColorBrush(color);
     }
 
     private void UpdateActionAvailability()
