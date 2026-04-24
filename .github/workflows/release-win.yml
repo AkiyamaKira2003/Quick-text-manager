@@ -45,6 +45,7 @@ jobs:
         shell: pwsh
         env:
           QT_SKIP_PYTHON_BUNDLE_INSTALL: '1'
+          QT_PYTHON_COMMAND: python
         run: |
           $ErrorActionPreference = 'Stop'
 

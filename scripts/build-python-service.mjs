@@ -46,11 +46,27 @@ function commandExists(command, args = ['--version']) {
 }
 
 function resolvePythonBaseCommand() {
-  const candidates = [
-    ['py', '-3'],
-    ['python'],
-    ['python3'],
-  ]
+  const preferredCommand = String(process.env.QT_PYTHON_COMMAND || '').trim()
+  if (preferredCommand) {
+    const preferredParts = preferredCommand.split(/\s+/).filter(Boolean)
+    const [command, ...baseArgs] = preferredParts
+    if (command && commandExists(command, [...baseArgs, '--version'])) {
+      return preferredParts
+    }
+    throw new Error(`QT_PYTHON_COMMAND is set but not usable: ${preferredCommand}`)
+  }
+
+  const candidates = process.env.CI
+    ? [
+        ['python'],
+        ['py', '-3'],
+        ['python3'],
+      ]
+    : [
+        ['py', '-3'],
+        ['python'],
+        ['python3'],
+      ]
 
   for (const candidate of candidates) {
     const [command, ...baseArgs] = candidate
@@ -126,4 +142,3 @@ try {
   process.stderr.write(`[python-build] ${error instanceof Error ? error.message : String(error)}\n`)
   process.exit(1)
 }
-
