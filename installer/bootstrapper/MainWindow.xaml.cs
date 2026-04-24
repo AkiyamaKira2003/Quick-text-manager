@@ -44,10 +44,10 @@ public partial class MainWindow
     private string? _currentCoreSource;
     private string? _currentSceneSource;
 
-    private const string InstallHeroSource = "pack://application:,,,/Assets/install-hero.png";
-    private const string UninstallHeroSource = "pack://application:,,,/Assets/uninstall-hero.png";
-    private const string SuccessHeroSource = "pack://application:,,,/Assets/success-hero.png";
-    private const string ErrorHeroSource = "pack://application:,,,/Assets/error-hero.png";
+    private const string InstallHeroSource = "pack://application:,,,/Assets/install-hero-alpha.png";
+    private const string UninstallHeroSource = "pack://application:,,,/Assets/uninstall-hero-alpha.png";
+    private const string SuccessHeroSource = "pack://application:,,,/Assets/success-hero-alpha.png";
+    private const string ErrorHeroSource = "pack://application:,,,/Assets/error-hero-alpha.png";
     private const string ProgressCoreSource = "pack://application:,,,/Assets/progress-core.png";
     private const string SuccessCoreSource = "pack://application:,,,/Assets/success-core.png";
     private const string ErrorCoreSource = "pack://application:,,,/Assets/error-core.png";

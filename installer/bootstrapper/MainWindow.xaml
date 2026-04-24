@@ -50,6 +50,66 @@
       </Setter>
     </Style>
 
+    <Style x:Key="GoldActionButton" TargetType="Button">
+      <Setter Property="Foreground" Value="#121212" />
+      <Setter Property="BorderBrush" Value="#FFE7A6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Background">
+        <Setter.Value>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#FFF1A6" Offset="0" />
+            <GradientStop Color="#D89D22" Offset="0.5" />
+            <GradientStop Color="#8B5E12" Offset="1" />
+          </LinearGradientBrush>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="Chrome"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="13">
+              <Grid ClipToBounds="True">
+                <Rectangle Height="18" VerticalAlignment="Top" Fill="#42FFFFFF" />
+                <Rectangle Height="18" VerticalAlignment="Bottom" Fill="#26000000" />
+                <Border Margin="6" CornerRadius="9" BorderBrush="#66FFF3B0" BorderThickness="1" />
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background">
+                  <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                      <GradientStop Color="#FFF7C9" Offset="0" />
+                      <GradientStop Color="#E8B63D" Offset="0.5" />
+                      <GradientStop Color="#9A6A17" Offset="1" />
+                    </LinearGradientBrush>
+                  </Setter.Value>
+                </Setter>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background">
+                  <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                      <GradientStop Color="#B87B18" Offset="0" />
+                      <GradientStop Color="#F0B846" Offset="0.55" />
+                      <GradientStop Color="#5A3A0B" Offset="1" />
+                    </LinearGradientBrush>
+                  </Setter.Value>
+                </Setter>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Opacity" Value="0.55" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="ToolCard" TargetType="Border">
       <Setter Property="Width" Value="320" />
       <Setter Property="Height" Value="120" />
@@ -95,8 +155,8 @@
               BorderBrush="#10FFFFFF"
               BorderThickness="0,0,1,0">
         <Canvas Width="88" Height="928">
-          <Border Canvas.Left="24" Canvas.Top="32" Width="40" Height="40" CornerRadius="12" ClipToBounds="True" Background="#101318">
-            <Image Source="Assets/kira-lc-logo.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+          <Border Canvas.Left="14" Canvas.Top="24" Width="60" Height="60" CornerRadius="16" ClipToBounds="True" Background="#101318" BorderBrush="#12FFFFFF" BorderThickness="1">
+            <Image Source="Assets/kira-lc-sidebar-logo.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
           </Border>
 
           <Button x:Name="HomeNavButton" Canvas.Left="16" Canvas.Top="220" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="SelectLocalSection" Tag="Home">
@@ -164,105 +224,107 @@
         <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.22" IsHitTestVisible="False" />
 
         <Canvas Width="1228" Height="928">
-          <Image Canvas.Left="76"
-                 Canvas.Top="84"
+          <Image Canvas.Left="78"
+                 Canvas.Top="112"
                  Width="680"
                  Height="126"
                  Source="Assets/header-strip.png"
                  Stretch="Fill"
-                 Opacity="0.58"
+                 Opacity="0.46"
                  IsHitTestVisible="False" />
-          <TextBlock Canvas.Left="104" Canvas.Top="132"
-                     Text="K I R A  L C"
-                     Foreground="#FF4655"
-                     FontFamily="Bahnschrift"
-                     FontSize="18"
-                     FontWeight="Bold" />
-          <TextBlock Canvas.Left="102" Canvas.Top="168"
-                     Text="QUICK TEXT"
-                     Foreground="#F2F2F2"
-                     FontFamily="Bahnschrift"
-                     FontSize="58"
-                     FontWeight="Black" />
-          <TextBlock Canvas.Left="104" Canvas.Top="235"
-                     Width="560"
-                     Text="Create, organize, and trigger reusable text actions instantly. Built for fast workflow, gaming chats, trading messages, and automation-ready input."
-                     Foreground="#B8FFFFFF"
-                     FontFamily="Segoe UI"
-                     FontSize="17"
-                     LineHeight="26"
-                     TextWrapping="Wrap" />
 
-          <Button x:Name="InstallButton"
-                  Canvas.Left="102"
-                  Canvas.Top="292"
-                  Width="244"
-                  Height="58"
-                  Style="{StaticResource NakedButton}"
-                  Click="InstallOrLaunch">
-            <Grid Width="244" Height="58">
-              <Image Source="Assets/launch-button-bg.png"
-                     Stretch="Fill"
-                     RenderOptions.BitmapScalingMode="HighQuality" />
-              <TextBlock x:Name="LaunchButtonLabel"
-                         Text="▶ LAUNCH"
-                         Foreground="#111111"
-                         FontFamily="Bahnschrift"
-                         FontSize="22"
-                         FontWeight="Black"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </Button>
+          <Grid Canvas.Left="104" Canvas.Top="146" Width="610">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="K I R A  L C"
+                       Foreground="#FF4655"
+                       FontFamily="Bahnschrift"
+                       FontSize="17"
+                       FontWeight="Bold" />
+            <TextBlock Grid.Row="1"
+                       Text="QUICK TEXT"
+                       Foreground="#F2F2F2"
+                       FontFamily="Bahnschrift"
+                       FontSize="56"
+                       FontWeight="Black"
+                       Margin="0,16,0,0" />
+            <TextBlock Grid.Row="2"
+                       Width="570"
+                       HorizontalAlignment="Left"
+                       Text="Create, organize, and trigger reusable text actions instantly. Built for fast workflow, gaming chats, trading messages, and automation-ready input."
+                       Foreground="#B8FFFFFF"
+                       FontFamily="Segoe UI"
+                       FontSize="17"
+                       LineHeight="26"
+                       TextWrapping="Wrap"
+                       Margin="0,10,0,0" />
 
-          <Button x:Name="ActionMenuButton"
-                  Canvas.Left="356"
-                  Canvas.Top="292"
-                  Width="58"
-                  Height="58"
-                  Style="{StaticResource NakedButton}"
-                  Click="ToggleActionMenu">
-            <Border CornerRadius="16" Background="#D1B98625" BorderBrush="#66D6AA4F" BorderThickness="1">
-              <TextBlock Text="⌄" Foreground="#111111" FontFamily="Bahnschrift" FontSize="25" FontWeight="Black" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0" />
-            </Border>
-          </Button>
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,24,0,0">
+              <Button x:Name="InstallButton"
+                      Width="244"
+                      Height="54"
+                      Style="{StaticResource GoldActionButton}"
+                      Click="InstallOrLaunch">
+                <TextBlock x:Name="LaunchButtonLabel"
+                           Text="▶ LAUNCH"
+                           Foreground="#111111"
+                           FontFamily="Bahnschrift"
+                           FontSize="21"
+                           FontWeight="Black"
+                           TextAlignment="Center" />
+              </Button>
 
-          <Popup x:Name="ActionMenuPopup"
-                 PlacementTarget="{Binding ElementName=ActionMenuButton}"
-                 Placement="Bottom"
-                 HorizontalOffset="-190"
-                 VerticalOffset="10"
-                 StaysOpen="False"
-                 AllowsTransparency="True"
-                 PopupAnimation="Fade">
-            <Border Width="300" CornerRadius="14" Background="#F0131519" BorderBrush="#2DFFFFFF" BorderThickness="1" Padding="10">
-              <StackPanel>
-                <Button Style="{StaticResource NakedButton}" Height="46" Click="OpenInstallDialog">
-                  <Border CornerRadius="10" Background="#16FFFFFF" Padding="12,8">
-                    <Grid>
-                      <TextBlock x:Name="MenuInstallLabel" Text="Install Quick Text" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
-                      <TextBlock Text="Default path, custom path, then download" Foreground="#88FFFFFF" FontFamily="Segoe UI" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,-3" />
-                    </Grid>
-                  </Border>
-                </Button>
-                <Button x:Name="LaunchMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,7,0,0" Click="LaunchFromMenu">
-                  <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
-                    <TextBlock Text="Launch" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
-                  </Border>
-                </Button>
-                <Button x:Name="RepairMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="RepairFromMenu">
-                  <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
-                    <TextBlock Text="Repair" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
-                  </Border>
-                </Button>
-                <Button x:Name="UninstallMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="UninstallFromMenu">
-                  <Border CornerRadius="10" Background="#19FF4655" Padding="12,0">
-                    <TextBlock Text="Uninstall" Foreground="#FFD9DE" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
-                  </Border>
-                </Button>
-              </StackPanel>
-            </Border>
-          </Popup>
+              <Button x:Name="ActionMenuButton"
+                      Width="54"
+                      Height="54"
+                      Margin="10,0,0,0"
+                      Style="{StaticResource GoldActionButton}"
+                      Click="ToggleActionMenu">
+                <TextBlock Text="⌄" Foreground="#111111" FontFamily="Bahnschrift" FontSize="24" FontWeight="Black" Margin="0,-5,0,0" />
+              </Button>
+            </StackPanel>
+
+            <Popup x:Name="ActionMenuPopup"
+                   PlacementTarget="{Binding ElementName=ActionMenuButton}"
+                   Placement="Bottom"
+                   HorizontalOffset="-246"
+                   VerticalOffset="10"
+                   StaysOpen="False"
+                   AllowsTransparency="True"
+                   PopupAnimation="Fade">
+              <Border Width="300" CornerRadius="14" Background="#F0131519" BorderBrush="#2DFFFFFF" BorderThickness="1" Padding="10">
+                <StackPanel>
+                  <Button Style="{StaticResource NakedButton}" Height="46" Click="OpenInstallDialog">
+                    <Border CornerRadius="10" Background="#16FFFFFF" Padding="12,8">
+                      <Grid>
+                        <TextBlock x:Name="MenuInstallLabel" Text="Install Quick Text" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="14" FontWeight="Bold" />
+                        <TextBlock Text="Default path, custom path, then download" Foreground="#88FFFFFF" FontFamily="Segoe UI" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,-3" />
+                      </Grid>
+                    </Border>
+                  </Button>
+                  <Button x:Name="LaunchMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,7,0,0" Click="LaunchFromMenu">
+                    <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
+                      <TextBlock Text="Launch" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                    </Border>
+                  </Button>
+                  <Button x:Name="RepairMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="RepairFromMenu">
+                    <Border CornerRadius="10" Background="#0DFFFFFF" Padding="12,0">
+                      <TextBlock Text="Repair" Foreground="#DFFFFFFF" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                    </Border>
+                  </Button>
+                  <Button x:Name="UninstallMenuButton" Style="{StaticResource NakedButton}" Height="40" Margin="0,6,0,0" Click="UninstallFromMenu">
+                    <Border CornerRadius="10" Background="#19FF4655" Padding="12,0">
+                      <TextBlock Text="Uninstall" Foreground="#FFD9DE" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                    </Border>
+                  </Button>
+                </StackPanel>
+              </Border>
+            </Popup>
+          </Grid>
 
           <Image Canvas.Left="86"
                  Canvas.Top="382"
