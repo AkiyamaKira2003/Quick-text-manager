@@ -25,6 +25,7 @@ public partial class MainWindow
         Launching,
         Loading,
         Success,
+        UpdateAvailable,
         Error,
         Removing,
     }
@@ -37,6 +38,7 @@ public partial class MainWindow
     private bool _installComplete;
     private bool _installDialogRepairMode;
     private bool _installing;
+    private bool _updateAvailable;
     private bool _sidebarModulePreviewPinned;
     private long _transferLastBytes;
     private DateTime _transferLastSampleAt = DateTime.UtcNow;
@@ -49,15 +51,23 @@ public partial class MainWindow
     private string? _currentCoreSource;
     private string? _currentSceneSource;
 
+    private const string MissingHeroSource = "pack://application:,,,/Assets/missing-hero-alpha.png";
     private const string InstallHeroSource = "pack://application:,,,/Assets/install-hero-alpha.png";
     private const string UninstallHeroSource = "pack://application:,,,/Assets/uninstall-hero-alpha.png";
     private const string SuccessHeroSource = "pack://application:,,,/Assets/success-hero-alpha.png";
+    private const string UpdateHeroSource = "pack://application:,,,/Assets/update-hero-alpha.png";
     private const string ErrorHeroSource = "pack://application:,,,/Assets/error-hero-alpha.png";
+    private const string IdleCoreSource = "pack://application:,,,/Assets/idle-core.png";
     private const string ProgressCoreSource = "pack://application:,,,/Assets/progress-core.png";
     private const string SuccessCoreSource = "pack://application:,,,/Assets/success-core.png";
+    private const string UpdateCoreSource = "pack://application:,,,/Assets/update-core.png";
+    private const string RemoveCoreSource = "pack://application:,,,/Assets/remove-core.png";
     private const string ErrorCoreSource = "pack://application:,,,/Assets/error-core.png";
+    private const string IdleSceneSource = "pack://application:,,,/Assets/idle-scene.png";
     private const string ProgressSceneSource = "pack://application:,,,/Assets/progress-scene.png";
     private const string SuccessSceneSource = "pack://application:,,,/Assets/success-scene.png";
+    private const string UpdateSceneSource = "pack://application:,,,/Assets/update-scene.png";
+    private const string RemoveSceneSource = "pack://application:,,,/Assets/remove-scene.png";
     private const string ErrorSceneSource = "pack://application:,,,/Assets/error-scene.png";
     private const int MaxActivityEntries = 20;
     private const int StateCrossfadeDurationMs = 480;
@@ -74,10 +84,10 @@ public partial class MainWindow
         SizeChanged += (_, _) => ApplyRoundedShellClip();
         WarmImageCache();
 
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         AddActivity("Kira LC setup shell ready.", "info");
         TransitionToState(
-            _installComplete ? SetupState.Success : SetupState.Idle,
+            GetInstalledReadyState(),
             _installComplete ? "Quick Text is already installed." : "Quick Text is not installed.");
     }
 
@@ -162,7 +172,7 @@ public partial class MainWindow
             return;
         }
 
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         UpdateActionAvailability();
         ActionMenuPopup.IsOpen = !ActionMenuPopup.IsOpen;
     }
@@ -219,10 +229,10 @@ public partial class MainWindow
 
         InstallPathBox.Text = dialog.SelectedPath;
         SyncInstallPathPreview();
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         AddActivity($"Install path set: {dialog.SelectedPath}", "info");
         TransitionToState(
-            _installComplete ? SetupState.Success : SetupState.Idle,
+            GetInstalledReadyState(),
             _installComplete
                 ? "Quick Text found in the selected folder."
                 : expectExisting
@@ -238,6 +248,41 @@ public partial class MainWindow
         InstallDialogPathBox.Text = InstallPathBox.Text;
     }
 
+    private void RefreshInstallState()
+    {
+        _installComplete = IsQuickTextInstalled();
+        _updateAvailable = _installComplete && IsUpdateAvailable();
+        UpdateAutoUpdateIndicator();
+    }
+
+    private SetupState GetInstalledReadyState()
+    {
+        if (!_installComplete)
+        {
+            return SetupState.Idle;
+        }
+
+        return _updateAvailable ? SetupState.UpdateAvailable : SetupState.Success;
+    }
+
+    private void UpdateAutoUpdateIndicator()
+    {
+        var color = _updateAvailable
+            ? MediaColor.FromRgb(255, 190, 42)
+            : _installComplete
+                ? MediaColor.FromRgb(56, 242, 122)
+                : MediaColor.FromRgb(92, 200, 255);
+
+        AutoUpdateDot.Fill = new SolidColorBrush(color);
+        AutoUpdateStateText.Text = _updateAvailable
+            ? "✓ Auto update: update ready"
+            : _installComplete
+                ? "✓ Auto update"
+                : "Auto update after install";
+        AutoUpdateStateText.Foreground = new SolidColorBrush(
+            _updateAvailable ? MediaColor.FromRgb(255, 214, 112) : MediaColor.FromRgb(148, 156, 166));
+    }
+
     private void InstallOrLaunch(object sender, RoutedEventArgs e)
     {
         if (_installing)
@@ -245,12 +290,20 @@ public partial class MainWindow
             return;
         }
 
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         if (_installComplete)
         {
-            AddActivity("Launch requested from primary button.", "info");
-            TransitionToState(SetupState.Launching, "Opening Quick Text...");
-            LaunchQuickText("primary launch");
+            if (_updateAvailable)
+            {
+                ShowInstallDialog(repairMode: true);
+            }
+            else
+            {
+                AddActivity("Launch requested from primary button.", "info");
+                TransitionToState(SetupState.Launching, "Opening Quick Text...");
+                LaunchQuickText("primary launch");
+            }
+
             return;
         }
 
@@ -265,15 +318,17 @@ public partial class MainWindow
         }
 
         ActionMenuPopup.IsOpen = false;
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         _installDialogRepairMode = repairMode || _installComplete;
         SyncInstallPathPreview();
 
-        InstallDialogTitle.Text = _installDialogRepairMode ? "Repair Quick Text" : "Install Quick Text";
-        InstallDialogBody.Text = _installDialogRepairMode
+        InstallDialogTitle.Text = _updateAvailable ? "Update Quick Text" : _installDialogRepairMode ? "Repair Quick Text" : "Install Quick Text";
+        InstallDialogBody.Text = _updateAvailable
+            ? "A newer Quick Text package is available. Update will refresh this folder and keep the same install path."
+            : _installDialogRepairMode
             ? "Quick Text is already installed at the path below. Repair will refresh the files in this folder."
             : "Quick Text will be installed to the default path below. You can choose a custom folder before downloading.";
-        InstallDialogPrimaryLabel.Text = _installDialogRepairMode ? "REPAIR" : "TẢI VỀ";
+        InstallDialogPrimaryLabel.Text = _updateAvailable ? "UPDATE" : _installDialogRepairMode ? "REPAIR" : "TẢI VỀ";
         InstallPathDialog.Visibility = Visibility.Visible;
     }
 
@@ -333,15 +388,15 @@ public partial class MainWindow
         }
 
         var action = (sender as FrameworkElement)?.Tag?.ToString() ?? string.Empty;
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
 
         if (action == "Primary")
         {
-            action = _installComplete ? "Launch" : "Install";
+            action = _installComplete ? _updateAvailable ? "Update" : "Launch" : "Install";
         }
         else if (ReferenceEquals(sender, InstallMenuButton) && _installComplete)
         {
-            action = "Repair";
+            action = _updateAvailable ? "Update" : "Repair";
         }
 
         switch (action)
@@ -349,12 +404,15 @@ public partial class MainWindow
             case "Install":
                 SetVisualState(InstallHeroSource, ProgressCoreSource, ProgressSceneSource);
                 break;
+            case "Update":
+                SetVisualState(UpdateHeroSource, UpdateCoreSource, UpdateSceneSource);
+                break;
             case "Launch":
             case "Repair":
                 SetVisualState(SuccessHeroSource, SuccessCoreSource, SuccessSceneSource);
                 break;
             case "Uninstall":
-                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                SetVisualState(UninstallHeroSource, RemoveCoreSource, RemoveSceneSource);
                 break;
         }
     }
@@ -399,6 +457,8 @@ public partial class MainWindow
             }
 
             _installComplete = true;
+            _updateAvailable = false;
+            UpdateAutoUpdateIndicator();
             InstallProgress.Value = 100;
             CompleteTransferUi("Install complete");
             AddActivity("Install complete. Quick Text is ready.", "success");
@@ -433,11 +493,11 @@ public partial class MainWindow
             return;
         }
 
-        if (IsQuickTextInstalled())
+        RefreshInstallState();
+        if (_installComplete)
         {
-            _installComplete = true;
-            AddActivity("Install card selected: Quick Text is already installed.", "success");
-            TransitionToState(SetupState.Success, "Quick Text is already installed.");
+            AddActivity(_updateAvailable ? "Install card selected: update is available." : "Install card selected: Quick Text is already installed.", "success");
+            TransitionToState(GetInstalledReadyState(), _updateAvailable ? "Quick Text has an update ready." : "Quick Text is already installed.");
             return;
         }
 
@@ -489,7 +549,7 @@ public partial class MainWindow
             return;
         }
 
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         if (!_installComplete)
         {
             AddActivity("Remove requested but Quick Text is not installed.", "warning");
@@ -524,7 +584,7 @@ public partial class MainWindow
             });
 
             await RemoveQuickTextInProcessAsync(installPath, transferProgress).ConfigureAwait(true);
-            _installComplete = IsQuickTextInstalled();
+            RefreshInstallState();
 
             if (_installComplete)
             {
@@ -1057,11 +1117,13 @@ public partial class MainWindow
     {
         _sidebarModulePreviewPinned = false;
         SidebarModulePopup.IsOpen = false;
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         AddActivity("Quick Text module selected.", _installComplete ? "success" : "info");
         TransitionToState(
-            _installComplete ? SetupState.Success : SetupState.Idle,
-            _installComplete ? "Quick Text is installed and ready to launch." : "Quick Text module is ready to install.");
+            GetInstalledReadyState(),
+            _installComplete
+                ? _updateAvailable ? "Quick Text has an update ready." : "Quick Text is installed and ready to launch."
+                : "Quick Text module is ready to install.");
     }
 
     private void ShowComingSoon(object sender, RoutedEventArgs e)
@@ -1137,7 +1199,7 @@ public partial class MainWindow
 
     private bool EnsureQuickTextInstalled(string actionName)
     {
-        _installComplete = IsQuickTextInstalled();
+        RefreshInstallState();
         if (_installComplete)
         {
             return true;
@@ -1157,7 +1219,7 @@ public partial class MainWindow
         switch (state)
         {
             case SetupState.Idle:
-                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                SetVisualState(MissingHeroSource, IdleCoreSource, IdleSceneSource);
                 LaunchButtonLabel.Text = "INSTALL";
                 StatusText.Text = detail ?? "Quick Text is not installed.";
                 ProgressText.Text = "Waiting for launch confirmation";
@@ -1192,6 +1254,15 @@ public partial class MainWindow
                 StepText.Text = "Module ready: Quick Text";
                 QuickTextModuleState.Text = "Active";
                 break;
+            case SetupState.UpdateAvailable:
+                SetVisualState(UpdateHeroSource, UpdateCoreSource, UpdateSceneSource);
+                LaunchButtonLabel.Text = "UPDATE";
+                StatusText.Text = detail ?? "Quick Text update is ready.";
+                ProgressText.Text = "Auto update can refresh the installed module";
+                InstallProgress.Value = 100;
+                StepText.Text = "Module update available: Quick Text";
+                QuickTextModuleState.Text = "Update";
+                break;
             case SetupState.Error:
                 SetVisualState(ErrorHeroSource, ErrorCoreSource, ErrorSceneSource);
                 LaunchButtonLabel.Text = "RETRY";
@@ -1201,7 +1272,7 @@ public partial class MainWindow
                 QuickTextModuleState.Text = "Error";
                 break;
             case SetupState.Removing:
-                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                SetVisualState(UninstallHeroSource, RemoveCoreSource, RemoveSceneSource);
                 LaunchButtonLabel.Text = "REMOVING";
                 StatusText.Text = detail ?? "Removing Quick Text module...";
                 ProgressText.Text = "Removing files inside Kira LC";
@@ -1219,11 +1290,14 @@ public partial class MainWindow
         switch (_currentState)
         {
             case SetupState.Idle:
-                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                SetVisualState(MissingHeroSource, IdleCoreSource, IdleSceneSource);
                 break;
             case SetupState.Launching:
             case SetupState.Success:
                 SetVisualState(SuccessHeroSource, SuccessCoreSource, SuccessSceneSource);
+                break;
+            case SetupState.UpdateAvailable:
+                SetVisualState(UpdateHeroSource, UpdateCoreSource, UpdateSceneSource);
                 break;
             case SetupState.Loading:
                 SetVisualState(InstallHeroSource, ProgressCoreSource, ProgressSceneSource);
@@ -1232,7 +1306,7 @@ public partial class MainWindow
                 SetVisualState(ErrorHeroSource, ErrorCoreSource, ErrorSceneSource);
                 break;
             case SetupState.Removing:
-                SetVisualState(UninstallHeroSource, ProgressCoreSource, ProgressSceneSource);
+                SetVisualState(UninstallHeroSource, RemoveCoreSource, RemoveSceneSource);
                 break;
         }
     }
@@ -1242,6 +1316,7 @@ public partial class MainWindow
         var color = state switch
         {
             SetupState.Launching or SetupState.Success => MediaColor.FromRgb(56, 242, 122),
+            SetupState.UpdateAvailable => MediaColor.FromRgb(255, 190, 42),
             SetupState.Loading or SetupState.Removing => MediaColor.FromRgb(214, 170, 79),
             SetupState.Error => MediaColor.FromRgb(255, 70, 85),
             _ => MediaColor.FromRgb(92, 200, 255),
@@ -1262,8 +1337,11 @@ public partial class MainWindow
         InstallDialogBrowseButton.IsEnabled = !busy;
 
         var isInstalled = _installComplete || IsQuickTextInstalled();
-        MenuInstallLabel.Text = isInstalled ? "Repair Quick Text" : "Install Quick Text";
-        InstallMenuButton.Tag = isInstalled ? "Repair" : "Install";
+        _installComplete = isInstalled;
+        _updateAvailable = isInstalled && IsUpdateAvailable();
+        UpdateAutoUpdateIndicator();
+        MenuInstallLabel.Text = _updateAvailable ? "Update Quick Text" : isInstalled ? "Repair Quick Text" : "Install Quick Text";
+        InstallMenuButton.Tag = _updateAvailable ? "Update" : isInstalled ? "Repair" : "Install";
         LaunchMenuButton.IsEnabled = !busy && isInstalled;
         LaunchMenuButton.Opacity = !busy && isInstalled ? 1 : 0.42;
         RepairMenuButton.IsEnabled = !busy && isInstalled;
@@ -1284,15 +1362,23 @@ public partial class MainWindow
     {
         foreach (var source in new[]
         {
+            MissingHeroSource,
             InstallHeroSource,
             UninstallHeroSource,
             SuccessHeroSource,
+            UpdateHeroSource,
             ErrorHeroSource,
+            IdleCoreSource,
             ProgressCoreSource,
             SuccessCoreSource,
+            UpdateCoreSource,
+            RemoveCoreSource,
             ErrorCoreSource,
+            IdleSceneSource,
             ProgressSceneSource,
             SuccessSceneSource,
+            UpdateSceneSource,
+            RemoveSceneSource,
             ErrorSceneSource,
         })
         {
@@ -1401,6 +1487,55 @@ public partial class MainWindow
     private bool IsQuickTextInstalled()
     {
         return File.Exists(GetQuickTextExecutablePath());
+    }
+
+    private bool IsUpdateAvailable()
+    {
+        var executablePath = GetQuickTextExecutablePath();
+        if (!File.Exists(executablePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var packageVersion = typeof(MainWindow).Assembly.GetName().Version;
+            if (packageVersion is null)
+            {
+                return false;
+            }
+
+            var versionInfo = FileVersionInfo.GetVersionInfo(executablePath);
+            var installedVersionText = versionInfo.ProductVersion ?? versionInfo.FileVersion;
+            if (!TryParseVersion(installedVersionText, out var installedVersion))
+            {
+                return false;
+            }
+
+            return installedVersion < packageVersion;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseVersion(string? text, out Version version)
+    {
+        version = new Version(0, 0, 0, 0);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var versionText = new string(text.TakeWhile(character => char.IsDigit(character) || character == '.').ToArray());
+        if (!Version.TryParse(versionText.TrimEnd('.'), out var parsedVersion))
+        {
+            return false;
+        }
+
+        version = parsedVersion;
+        return true;
     }
 
     private string GetQuickTextExecutablePath()

@@ -238,7 +238,7 @@
 
       <Grid Grid.Column="1" Width="1228" Height="928" ClipToBounds="True">
         <Image Source="Assets/quicktext-hero.png"
-               Stretch="UniformToFill"
+               Stretch="Fill"
                RenderOptions.BitmapScalingMode="HighQuality" />
         <Rectangle>
           <Rectangle.Fill>
@@ -257,19 +257,30 @@
             </LinearGradientBrush>
           </Rectangle.Fill>
         </Rectangle>
-        <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.22" IsHitTestVisible="False" />
+        <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.12" IsHitTestVisible="False" />
+
+        <Border Margin="46,54,56,36"
+                CornerRadius="28"
+                BorderBrush="#3A54E0FF"
+                BorderThickness="1"
+                Background="#08000000"
+                IsHitTestVisible="False">
+          <Border.Effect>
+            <DropShadowEffect Color="#163DEBFF" BlurRadius="20" ShadowDepth="0" Opacity="0.58" />
+          </Border.Effect>
+        </Border>
 
         <Canvas Width="1228" Height="928">
-          <Image Canvas.Left="78"
-                 Canvas.Top="112"
-                 Width="680"
-                 Height="126"
+          <Image Canvas.Left="104"
+                 Canvas.Top="98"
+                 Width="560"
+                 Height="96"
                  Source="Assets/header-strip.png"
                  Stretch="Fill"
-                 Opacity="0.46"
+                 Opacity="0.2"
                  IsHitTestVisible="False" />
 
-          <Grid Canvas.Left="104" Canvas.Top="146" Width="610" Panel.ZIndex="20">
+          <Grid Canvas.Left="104" Canvas.Top="126" Width="552" Panel.ZIndex="20">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
@@ -290,13 +301,13 @@
                        FontWeight="Black"
                        Margin="0,16,0,0" />
             <TextBlock Grid.Row="2"
-                       Width="570"
+                       Width="520"
                        HorizontalAlignment="Left"
-                       Text="Create, organize, and trigger reusable text actions instantly. Built for fast workflow, gaming chats, trading messages, and automation-ready input."
+                       Text="Dịch chat Việt - Hàn, đọc ảnh tiếng Hàn sang tiếng Việt, và thao tác cực nhanh khi đang chơi game Hàn."
                        Foreground="#B8FFFFFF"
                        FontFamily="Segoe UI"
-                       FontSize="17"
-                       LineHeight="26"
+                       FontSize="16"
+                       LineHeight="24"
                        TextWrapping="Wrap"
                        Margin="0,10,0,0" />
 
@@ -387,6 +398,25 @@
                       <TextBlock Text="Uninstall" Foreground="#FFD9DE" FontFamily="Bahnschrift" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
                     </Border>
                   </Button>
+                  <Border x:Name="AutoUpdateHint"
+                          CornerRadius="8"
+                          Background="#09000000"
+                          Padding="11,6"
+                          Margin="0,5,0,0">
+                    <StackPanel Orientation="Horizontal">
+                      <Ellipse x:Name="AutoUpdateDot"
+                               Width="7"
+                               Height="7"
+                               Fill="#38F27A"
+                               VerticalAlignment="Center" />
+                      <TextBlock x:Name="AutoUpdateStateText"
+                                 Text="✓ Auto update"
+                                 Foreground="#88FFFFFF"
+                                 FontFamily="Segoe UI"
+                                 FontSize="11"
+                                 Margin="8,0,0,0" />
+                    </StackPanel>
+                  </Border>
                 </StackPanel>
               </Border>
             </Popup>
@@ -444,24 +474,51 @@
             </Border>
           </Grid>
 
-          <Image Canvas.Left="86"
-                 Canvas.Top="382"
-                 Width="660"
-                 Height="156"
-                 Source="Assets/header-glow.png"
-                 Stretch="Fill"
-                 Opacity="0.72"
-                 IsHitTestVisible="False" />
-
-          <TextBlock Canvas.Left="102" Canvas.Top="560"
-                     Width="540"
-                     Text="Quick Text helps you create, organize, and trigger reusable text actions instantly. Built for fast workflow, gaming chats, trading messages, and automation-ready input."
-                     Foreground="#B3FFFFFF"
-                     FontFamily="Segoe UI"
-                     FontSize="18"
-                     FontWeight="SemiBold"
-                     LineHeight="28"
-                     TextWrapping="Wrap" />
+          <Border Canvas.Left="104"
+                  Canvas.Top="486"
+                  Width="560"
+                  Height="136"
+                  CornerRadius="18"
+                  Background="#73070B0E"
+                  BorderBrush="#2454E0FF"
+                  BorderThickness="1"
+                  Padding="18,16"
+                  Panel.ZIndex="12">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="VI - KR FAST SEND"
+                           Foreground="#F2F2F2"
+                           FontFamily="Bahnschrift"
+                           FontSize="16"
+                           FontWeight="Bold" />
+                <TextBlock Text="Gõ tiếng Việt, chuyển sang tiếng Hàn và gửi bằng hotkey."
+                           Foreground="#AFFFFFFF"
+                           FontFamily="Segoe UI"
+                           FontSize="13"
+                           LineHeight="19"
+                           TextWrapping="Wrap"
+                           Margin="0,8,16,0" />
+              </StackPanel>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="KR IMAGE OCR"
+                           Foreground="#F2F2F2"
+                           FontFamily="Bahnschrift"
+                           FontSize="16"
+                           FontWeight="Bold" />
+                <TextBlock Text="Chụp ảnh chữ Hàn trong game, đọc nhanh sang tiếng Việt."
+                           Foreground="#AFFFFFFF"
+                           FontFamily="Segoe UI"
+                           FontSize="13"
+                           LineHeight="19"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0" />
+              </StackPanel>
+            </Grid>
+          </Border>
 
           <Border x:Name="ModuleCardPanel" Canvas.Left="102" Canvas.Top="770" Style="{StaticResource ToolCard}" ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="OpenQuickTextFeature" Tag="Preset Library">
             <Grid>
@@ -469,8 +526,8 @@
               <Image x:Name="SceneImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
               <Rectangle Fill="#B5080C0F" />
               <StackPanel>
-                <TextBlock Text="Preset Library" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
-                <TextBlock Text="Reusable snippets, profiles, and module-ready text groups." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <TextBlock Text="Quick Translate" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Vietnamese input to Korean game chat with saved phrases." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
               </StackPanel>
             </Grid>
           </Border>
@@ -480,8 +537,8 @@
               <Image Source="Assets/success-scene.png" Stretch="UniformToFill" Opacity="0.58" RenderOptions.BitmapScalingMode="HighQuality" />
               <Rectangle Fill="#B5080C0F" />
               <StackPanel>
-                <TextBlock Text="Hotkey Manager" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
-                <TextBlock Text="Packaged Electron hotkeys with native input fallback." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <TextBlock Text="Korean OCR" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Capture Korean UI text and read it back in Vietnamese." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
               </StackPanel>
             </Grid>
           </Border>
@@ -491,8 +548,8 @@
               <Image Source="Assets/error-scene.png" Stretch="UniformToFill" Opacity="0.54" RenderOptions.BitmapScalingMode="HighQuality" />
               <Rectangle Fill="#B5080C0F" />
               <StackPanel>
-                <TextBlock Text="Clipboard Actions" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
-                <TextBlock Text="Fast paste, overlay tools, and automation-ready send flow." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <TextBlock Text="Game Overlay" Foreground="#F2F2F2" FontFamily="Bahnschrift" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="Keep translation controls close without blocking gameplay." Foreground="#D8FFFFFF" FontFamily="Segoe UI" FontSize="13" LineHeight="19" TextWrapping="Wrap" Margin="0,10,0,0" />
               </StackPanel>
             </Grid>
           </Border>
@@ -525,8 +582,8 @@
 
           <Border Grid.Row="1" Height="430" CornerRadius="18" Background="#0B0B0D" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Margin="0,18,0,0">
             <Grid>
-              <Image x:Name="HeroImageA" Stretch="Uniform" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Image x:Name="HeroImageB" Stretch="Uniform" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="HeroImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="HeroImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
               <Rectangle>
                 <Rectangle.Fill>
                   <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">

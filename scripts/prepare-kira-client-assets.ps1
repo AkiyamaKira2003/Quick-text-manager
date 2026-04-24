@@ -13,7 +13,7 @@ $brandAssets = Join-Path $repoRoot "installer/brand"
 
 $sourceMap = @{
   "quicktext-hero-source.png" = "MAIN UI.png"
-  "sword-states-sheet.png" = "sidebar.png uninstaller-sidebar.png success-hero.png error-hero.png"
+  "allstate.png" = "allstate.png"
   "energy-core-sheet.png" = @(
     "progress-core.png (left) success-core.png (center) error-core.png (right)",
     "progress-core.png success-hero.png error-hero.png"
@@ -257,7 +257,7 @@ function Copy-Asset {
 }
 
 $sourceHero = Join-Path $resolvedSourceDir "quicktext-hero-source.png"
-$sourceSword = Join-Path $resolvedSourceDir "sword-states-sheet.png"
+$sourceAllstate = Join-Path $resolvedSourceDir "allstate.png"
 $sourceCore = Join-Path $resolvedSourceDir "energy-core-sheet.png"
 $sourceHud = Join-Path $resolvedSourceDir "hud-frame-header-sheet.png"
 $sourceLaunch = Join-Path $resolvedSourceDir "launch-button-source.png"
@@ -276,21 +276,24 @@ Copy-Asset $quickTextHero @(
   (Join-Path $bootstrapperAssets "quicktext-hero.png")
 )
 
-# Synchronized sword states, 2x2 grid:
-# top-left install, top-right uninstall, bottom-left success, bottom-right error.
-$swordSize = [KiraClientImageTools]::GetSize($sourceSword)
-$swordPanelWidth = [int][Math]::Floor($swordSize.Width / 2)
-$swordPanelHeight = [int][Math]::Floor($swordSize.Height / 2)
-$swordStates = @(
-  @{ File = "sword-pristine.png"; Installer = "install-hero.png"; Brand = "sidebar.png"; X = 0; Y = 0 },
-  @{ File = "sword-damaged.png"; Installer = "uninstall-hero.png"; Brand = "uninstaller-sidebar.png"; X = 1; Y = 0 },
-  @{ File = "sword-success.png"; Installer = "success-hero.png"; Brand = ""; X = 0; Y = 1 },
-  @{ File = "sword-error.png"; Installer = "error-hero.png"; Brand = ""; X = 1; Y = 1 }
+# Synchronized Quick Text states from allstate.png, 3x2 grid:
+# top-left missing, top-center installing, top-right installed,
+# bottom-left update ready, bottom-center removing, bottom-right attention.
+$allstateSize = [KiraClientImageTools]::GetSize($sourceAllstate)
+$allstatePanelWidth = [int][Math]::Floor($allstateSize.Width / 3)
+$allstatePanelHeight = [int][Math]::Floor($allstateSize.Height / 2)
+$quickTextStates = @(
+  @{ File = "quicktext-missing.png"; Installer = "missing-hero.png"; Brand = ""; X = 0; Y = 0 },
+  @{ File = "quicktext-installing.png"; Installer = "install-hero.png"; Brand = "sidebar.png"; X = 1; Y = 0 },
+  @{ File = "quicktext-installed.png"; Installer = "success-hero.png"; Brand = ""; X = 2; Y = 0 },
+  @{ File = "quicktext-update.png"; Installer = "update-hero.png"; Brand = ""; X = 0; Y = 1 },
+  @{ File = "quicktext-removing.png"; Installer = "uninstall-hero.png"; Brand = "uninstaller-sidebar.png"; X = 1; Y = 1 },
+  @{ File = "quicktext-error.png"; Installer = "error-hero.png"; Brand = ""; X = 2; Y = 1 }
 )
 
-foreach ($state in $swordStates) {
+foreach ($state in $quickTextStates) {
   $brandOutput = Join-Path $assetRoot ("brand/" + $state.File)
-  [KiraClientImageTools]::SaveCrop($sourceSword, $brandOutput, $state.X * $swordPanelWidth, $state.Y * $swordPanelHeight, $swordPanelWidth, $swordPanelHeight, 1024, 1024, $false, 0)
+  [KiraClientImageTools]::SaveCrop($sourceAllstate, $brandOutput, $state.X * $allstatePanelWidth, $state.Y * $allstatePanelHeight, $allstatePanelWidth, $allstatePanelHeight, 1024, 1024, $false, 0)
 
   $destinations = @(
     (Join-Path $publicRoot ("brand/" + $state.File)),

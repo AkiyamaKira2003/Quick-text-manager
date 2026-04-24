@@ -26,9 +26,9 @@ This splits the labeled regions in `installer/brand/allin.png` into the older in
 Current required slots:
 
 - `Assets/kira-lc-logo.png`: Kira LC launcher logo/masthead. Recommended `1600x900` or square art that still reads when cropped wide.
-- `Assets/install-hero.png`: main blue/cyan poster for the Quick Text install screen. Recommended `1800x2400` or taller portrait.
+- `Assets/install-hero.png`: Quick Text installing/downloading state art derived from `allstate.png`.
 - `Assets/brand-banner.png`: Quick Text module banner/logo. Recommended `1600x420`.
-- `Assets/uninstall-hero.png`: red uninstall/remove poster. Recommended `1800x2400` or taller portrait.
+- `Assets/uninstall-hero.png`: Quick Text removing/uninstall state art derived from `allstate.png`.
 - `Assets/kira-lc-wordmark.png`: transparent Kira LC wordmark, `1800x420`.
 - `Assets/quick-text-module-card.png`: horizontal module card, `1600x900`.
 - `Assets/progress-core.png`: glowing install reactor/progress orb, transparent PNG, `1024x1024`.
@@ -37,8 +37,10 @@ Current required slots:
 - `Assets/progress-scene.png`: wide progress scene from the lower row of the core sheet.
 - `Assets/success-scene.png`: wide success scene from the lower row of the core sheet.
 - `Assets/error-scene.png`: wide error scene from the lower row of the core sheet.
-- `Assets/success-hero.png`: completion art, `1800x2400`.
-- `Assets/error-hero.png`: failure/repair art, `1800x2400`.
+- `Assets/missing-hero.png`: not-installed state art derived from `allstate.png`.
+- `Assets/success-hero.png`: installed/success state art derived from `allstate.png`.
+- `Assets/update-hero.png`: update-ready state art derived from `allstate.png`.
+- `Assets/error-hero.png`: failure/repair state art derived from `allstate.png`.
 - `Assets/noise-overlay.png`: subtle transparent grain layer, `1920x1080`.
 - `Assets/frame-overlay.png`: transparent sci-fi frame/HUD overlay, `1920x1080`.
 - `Assets/header-strip.png`: transparent horizontal HUD strip.
@@ -53,6 +55,6 @@ Art direction:
 - Quick Text should read like the installed module/app inside Kira LC.
 - Avoid tiny text inside images. UI text is rendered by WPF so it stays sharp.
 - Keep the subject centered. The setup window crops hero images to fit.
-- Generate synchronized states as sheets so install, success, and error assets share silhouette and lighting.
+- Generate synchronized states as sheets so install, update, success, remove, and error assets share silhouette and lighting.
 - Prefer black-to-alpha processing for HUD/core/button assets instead of manual background removal.
-- The asset script uses soft alpha feathering for black-background images. Do not force-transparent sword/hero/noise images unless their source is isolated on pure black; those are intentionally kept as full artwork to avoid dirty edges.
+- The asset script uses soft alpha feathering for black-background images. Keep Quick Text state assets based on `allstate.png`; avoid reintroducing old weapon imagery for this module.
