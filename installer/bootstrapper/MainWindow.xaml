@@ -155,8 +155,19 @@
               BorderBrush="#10FFFFFF"
               BorderThickness="0,0,1,0">
         <Canvas Width="88" Height="928">
-          <Border Canvas.Left="14" Canvas.Top="24" Width="60" Height="60" CornerRadius="16" ClipToBounds="True" Background="#101318" BorderBrush="#12FFFFFF" BorderThickness="1">
-            <Image Source="Assets/kira-lc-sidebar-logo.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+          <Border Canvas.Left="14"
+                  Canvas.Top="24"
+                  Width="60"
+                  Height="60"
+                  CornerRadius="18"
+                  ClipToBounds="True"
+                  BorderBrush="#22FFFFFF"
+                  BorderThickness="1"
+                  RenderOptions.BitmapScalingMode="HighQuality"
+                  SnapsToDevicePixels="True">
+            <Border.Background>
+              <ImageBrush ImageSource="Assets/kira-lc-sidebar-logo.png" Stretch="UniformToFill" />
+            </Border.Background>
           </Border>
 
           <Button x:Name="HomeNavButton" Canvas.Left="16" Canvas.Top="220" Width="56" Height="56" Style="{StaticResource NakedButton}" Click="SelectLocalSection" Tag="Home">
