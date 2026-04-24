@@ -3755,6 +3755,8 @@ export default function OverlayUnifiedToolsPanel({
   const compactDisplayReply = displayReply
   const showTextDockPanel = settingsDockPanel === 'text' && !textIsGhost && !textCompactPlay
   const showImageDockPanel = settingsDockPanel === 'image' && !imageIsGhost && !imageCompactPlay
+  const showTextEditPreview = isOverlayEditMode && !textIsGhost && !textWindowCollapsed
+  const showImageEditPreview = isOverlayEditMode && !imageIsGhost && !imageWindowCollapsed
 
   useEffect(() => {
     if (!onOverlayTextInteractionChange) return
@@ -4147,6 +4149,89 @@ export default function OverlayUnifiedToolsPanel({
             <div className="px-3 py-2 text-xs text-[var(--qt-muted)]">{t(language, 'overlayTools.ghostHint')}</div>
           ) : (
             <>
+              {showTextEditPreview ? (
+                <div
+                  data-overlay-toolbox="true"
+                  className="mx-2 mt-2 shrink-0 rounded-xl border border-[var(--qt-border)] bg-black/25 p-2 shadow-[0_16px_40px_rgba(0,0,0,0.22)] qt-overlay-fade-in"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--qt-muted)]">
+                      {language === 'vi' ? 'Preview khi chơi' : 'Gameplay preview'}
+                    </p>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        settings.overlayElementsVisible
+                          ? 'border-emerald-300/35 text-emerald-200'
+                          : 'border-amber-300/35 text-amber-200'
+                      }`}
+                    >
+                      {settings.overlayElementsVisible
+                        ? language === 'vi'
+                          ? 'Đang hiện'
+                          : 'Visible'
+                        : language === 'vi'
+                          ? 'Đang ẩn'
+                          : 'Hidden'}
+                    </span>
+                  </div>
+                  <div
+                    className={`qt-play-context-stack qt-play-context-stack-forward space-y-1.5 rounded-lg border border-white/10 bg-black/25 p-2 ${playTextAlign === 'left' ? 'text-left' : playTextAlign === 'right' ? 'text-right' : 'text-center'}`}
+                  >
+                    {visiblePlayTextContextRows.map((row) => {
+                      const baseTextSize = Math.max(16, Math.round(playTextSize))
+                      const roleScale = row.role === 'current' ? 0.86 : 0.68
+                      const rowTextSize = Math.max(11, Math.round(baseTextSize * roleScale))
+                      const rowNoteSize = Math.max(10, Math.round(playNoteSize * (row.role === 'current' ? 0.86 : 0.7)))
+                      const rowOpacity =
+                        row.role === 'current' ? Math.max(0.24, Math.min(1, playTextOpacity)) : Math.max(0.16, Math.min(0.68, playTextOpacity * 0.6))
+                      const roleLabel =
+                        row.role === 'current'
+                          ? t(language, 'overlayTools.contextCurrent')
+                          : row.role === 'prev'
+                            ? t(language, 'overlayTools.contextPrev')
+                            : t(language, 'overlayTools.contextNext')
+                      const rowText = row.text || t(language, 'overlay.hudEmpty')
+
+                      return (
+                        <div
+                          key={`edit-preview-${row.key}`}
+                          className={`qt-play-context-row ${row.role === 'current' ? 'qt-play-context-row-current' : 'qt-play-context-row-side'} ${row.empty ? 'opacity-45' : ''}`}
+                        >
+                          <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--qt-muted)]">{roleLabel}</p>
+                          <p
+                            className="truncate whitespace-nowrap leading-tight"
+                            style={{
+                              fontSize: `${rowTextSize}px`,
+                              fontWeight: row.role === 'current' ? 800 : 650,
+                              color: colorWithAlpha(playTextColor, rowOpacity),
+                              textShadow:
+                                row.role === 'current'
+                                  ? '0 0 10px rgba(0,0,0,0.92), 0 0 18px rgba(0,0,0,0.7)'
+                                  : '0 0 8px rgba(0,0,0,0.82)',
+                            }}
+                          >
+                            {rowText}
+                          </p>
+                          {row.note ? (
+                            <p
+                              className="mt-0.5 truncate whitespace-nowrap leading-snug"
+                              style={{
+                                fontSize: `${rowNoteSize}px`,
+                                fontWeight: row.role === 'current' ? 600 : 500,
+                                color: colorWithAlpha(playTextColor, Math.max(0.16, rowOpacity * 0.82)),
+                                textShadow: '0 0 7px rgba(0,0,0,0.82)',
+                              }}
+                            >
+                              {row.note}
+                            </p>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               {textCompactPlay ? (
                 <div
                   data-overlay-toolbox="true"
@@ -4627,6 +4712,66 @@ export default function OverlayUnifiedToolsPanel({
               className={`min-h-0 max-h-[min(80vh,840px)] overflow-auto p-3 ${contentAnimationClass}`}
             >
               <section className="space-y-3">
+                {showImageEditPreview ? (
+                  <section className="qt-overlay-fade-in qt-overlay-surface space-y-2 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--qt-muted)]">
+                        {language === 'vi' ? 'Preview khi chơi' : 'Gameplay preview'}
+                      </p>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                          settings.overlayPlayShowImageCard
+                            ? 'border-emerald-300/35 text-emerald-200'
+                            : 'border-amber-300/35 text-amber-200'
+                        }`}
+                      >
+                        {settings.overlayPlayShowImageCard
+                          ? language === 'vi'
+                            ? 'Đang hiện'
+                            : 'Visible'
+                          : language === 'vi'
+                            ? 'Đang ẩn'
+                            : 'Hidden'}
+                      </span>
+                    </div>
+                    <div className="qt-image-compact-card qt-image-compact-overlay">
+                      {compactDisplayImageSrc ? (
+                        <div className="mb-2 overflow-hidden rounded-lg border border-[var(--qt-border)] bg-black/35">
+                          <Image
+                            src={compactDisplayImageSrc}
+                            alt={imageName || 'Translated image'}
+                            width={560}
+                            height={320}
+                            className="h-auto max-h-44 w-full object-contain"
+                            unoptimized
+                          />
+                        </div>
+                      ) : null}
+
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="qt-image-compact-status-label truncate text-[10px] font-semibold uppercase tracking-wide">
+                          {t(language, 'overlayImage.compactStatusLabel')}
+                        </p>
+                        <p className="qt-image-compact-status-value truncate text-[10px] font-semibold">
+                          {isSearching
+                            ? t(language, 'overlayImage.searching')
+                            : lensError
+                              ? t(language, 'overlayImage.compactStatusError')
+                              : compactDisplayReply
+                                ? t(language, 'overlayImage.compactStatusReady')
+                                : t(language, 'overlayImage.compactStatusIdle')}
+                        </p>
+                      </div>
+
+                      {lensError ? <p className="qt-overlay-text-error mb-1 text-[11px]">{lensError}</p> : null}
+
+                      <p className="qt-image-compact-reply max-h-24 overflow-auto whitespace-pre-wrap text-[12px] leading-relaxed">
+                        {compactDisplayReply || t(language, 'overlayImage.compactNoReply')}
+                      </p>
+                    </div>
+                  </section>
+                ) : null}
+
                 <section className="qt-overlay-fade-in qt-overlay-surface space-y-2 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--qt-muted)]">
