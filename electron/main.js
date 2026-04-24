@@ -143,7 +143,9 @@ const ELECTRON_HOTKEY_TOGGLE_DEBOUNCE_MS = 900
 const STARTUP_PHASE_LOG_ENABLED = parseBooleanEnv('QT_STARTUP_PHASE_LOG', false)
 const OVERLAY_LIFECYCLE_LOG_ENABLED = parseBooleanEnv('QT_OVERLAY_LIFECYCLE_LOG', false)
 const SKIP_ADMIN_CHECK = parseBooleanEnv('QT_SKIP_ADMIN_CHECK', false)
+const ELECTRON_HOTKEY_FALLBACK_ENV = String(process.env.QT_ELECTRON_HOTKEY_FALLBACK || '').trim().toLowerCase()
 const FORCE_ELECTRON_HOTKEY_FALLBACK = parseBooleanEnv('QT_ELECTRON_HOTKEY_FALLBACK', false)
+const DISABLE_PACKAGED_ELECTRON_HOTKEY_FALLBACK = ['0', 'false', 'no', 'off'].includes(ELECTRON_HOTKEY_FALLBACK_ENV)
 const AUTO_UPDATE_STARTUP_DELAY_MS = 2800
 const AUTO_UPDATE_FEED_URL = String(process.env.QT_UPDATE_FEED_URL || process.env.ELECTRON_UPDATE_URL || '').trim()
 const PROFILING_MAX_ERROR_LENGTH = 420
@@ -4340,16 +4342,17 @@ async function syncInputRuntimeForSettings(settings, reason = 'settings-sync') {
     }
   }
 
+  const useElectronHotkeyRuntime = shouldUseElectronHotkeyFallback()
   const payload = {
     text: getSelectedTextFromSettings(settings),
-    hotkey: settings.sendHotkey,
-    // App toggle hotkey is handled directly in Electron main process for reliability.
+    hotkey: useElectronHotkeyRuntime ? null : settings.sendHotkey,
+    // App toggle, and packaged hotkeys generally, are handled in Electron for reliability.
     app_toggle_hotkey: null,
     block_alt_f4: !!settings.blockAltF4WhenEnabled,
     app_enabled: !!settings.appEnabled,
-    overlay_toggle_hotkey: settings.overlayToggleHotkey,
-    main_toggle_hotkey: settings.mainToggleHotkey,
-    overlay_edit_hotkey: settings.overlayEditHotkey,
+    overlay_toggle_hotkey: useElectronHotkeyRuntime ? null : settings.overlayToggleHotkey,
+    main_toggle_hotkey: useElectronHotkeyRuntime ? null : settings.mainToggleHotkey,
+    overlay_edit_hotkey: useElectronHotkeyRuntime ? null : settings.overlayEditHotkey,
     press_enter: false,
   }
   const result = await handleInputConfigure(payload)
@@ -5466,6 +5469,7 @@ function schedulePersistMainBounds() {
 
 function shouldUseElectronHotkeyFallback() {
   if (FORCE_ELECTRON_HOTKEY_FALLBACK) return true
+  if (app.isPackaged && !DISABLE_PACKAGED_ELECTRON_HOTKEY_FALLBACK) return true
   // If python backend is selected but service is down, keep hotkeys alive via Electron fallback.
   const backend = inputBackendName || resolvePreferredInputBackend()
   return backend === INPUT_BACKEND_PYTHON && !managedPythonHealthOk

@@ -125,6 +125,7 @@ jobs:
               }
 
               Copy-Item -LiteralPath $setupExe.FullName -Destination 'dist' -Force
+              Copy-Item -Path (Join-Path $attemptOutput 'latest.yml') -Destination 'dist' -Force -ErrorAction SilentlyContinue
               Copy-Item -Path (Join-Path $attemptOutput 'QuickText-Setup-*.exe.blockmap') -Destination 'dist' -Force -ErrorAction SilentlyContinue
               $buildSucceeded = $true
               break
@@ -162,5 +163,7 @@ jobs:
           files: |
             dist/KiraLC-Setup-*.exe
             dist/QuickText-Setup-*.exe
+            dist/QuickText-Setup-*.exe.blockmap
             dist/QuickText-win-x64.zip
             dist/latest.json
+            dist/latest.yml

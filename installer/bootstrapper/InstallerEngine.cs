@@ -7,16 +7,20 @@ namespace QuickText.Setup;
 internal static class InstallerEngine
 {
     private const string EmbeddedEngineName = "QuickTextSetupEngine.exe";
+    private const string EngineOverrideEnvironmentVariable = "KIRALC_SETUP_ENGINE_PATH";
 
     internal static string ResolveOrExtract()
     {
-        var baseDirectory = AppContext.BaseDirectory;
-        var sideBySideEngine = Directory
-            .EnumerateFiles(baseDirectory, "QuickText-Setup-*.exe", SearchOption.TopDirectoryOnly)
-            .FirstOrDefault(path => !Path.GetFileName(path).Equals("QuickText.Setup.exe", StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(sideBySideEngine))
+        var overrideEngine = Environment.GetEnvironmentVariable(EngineOverrideEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(overrideEngine))
         {
-            return sideBySideEngine;
+            var overridePath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(overrideEngine.Trim().Trim('"')));
+            if (File.Exists(overridePath))
+            {
+                return overridePath;
+            }
+
+            throw new FileNotFoundException($"The override setup engine does not exist: {overridePath}", overridePath);
         }
 
         var assembly = Assembly.GetExecutingAssembly();
@@ -26,7 +30,7 @@ internal static class InstallerEngine
             throw new InvalidOperationException("Missing embedded Quick Text setup engine.");
         }
 
-        var engineDirectory = Path.Combine(Path.GetTempPath(), "QuickText", "SetupEngine");
+        var engineDirectory = Path.Combine(Path.GetTempPath(), "QuickText", "SetupEngine", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(engineDirectory);
         var enginePath = Path.Combine(engineDirectory, EmbeddedEngineName);
         using var fileStream = File.Create(enginePath);

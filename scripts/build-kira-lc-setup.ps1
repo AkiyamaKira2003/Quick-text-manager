@@ -16,13 +16,11 @@ $package = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
 $version = [string]$package.version
 
 if ([string]::IsNullOrWhiteSpace($EnginePath)) {
-  $engine = Get-ChildItem -Path (Join-Path $repoRoot "dist/QuickText-Setup-*.exe") -File -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-  if ($null -eq $engine) {
-    throw "Missing QuickText setup engine. Build the NSIS installer first."
+  $expectedEnginePath = Join-Path $repoRoot "dist/QuickText-Setup-$version.exe"
+  if (-not (Test-Path -LiteralPath $expectedEnginePath)) {
+    throw "Missing QuickText setup engine for v$version. Expected: $expectedEnginePath. Build the NSIS installer first."
   }
-  $EnginePath = $engine.FullName
+  $EnginePath = $expectedEnginePath
 }
 
 if (-not (Test-Path -LiteralPath $EnginePath)) {
