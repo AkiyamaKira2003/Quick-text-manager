@@ -2,13 +2,13 @@
 
 `Kira LC` is the installer/launcher shell. `Quick Text` is the module installed by that shell.
 
-The canonical source image is `allin.png` at the repository root. Run:
+The canonical source image is `installer/brand/allin.png`. Run:
 
 ```powershell
 npm run assets:installer:allin
 ```
 
-This splits the labeled regions in `allin.png` into the files below and syncs the NSIS fallback artwork in `installer/brand`.
+This splits the labeled regions in `installer/brand/allin.png` into the files below and syncs the NSIS fallback artwork in `installer/brand`.
 
 Current required slots:
 

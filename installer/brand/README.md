@@ -2,13 +2,13 @@
 
 Drop custom artwork in this folder before running `npm run build:win-icon`, `npm run dist:folder`, or `npm run dist:win`.
 
-If you are using the labeled all-in-one source image, place it at repository root as `allin.png` and run:
+If you are using the labeled all-in-one source image, place it here as `installer/brand/allin.png` and run:
 
 ```powershell
 npm run assets:installer:allin
 ```
 
-That command refreshes this folder from the matching Kira LC bootstrapper artwork.
+That command cuts the labeled regions into the Kira LC bootstrapper assets and refreshes this folder's NSIS fallback images.
 
 Supported files:
 

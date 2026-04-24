@@ -1,14 +1,17 @@
 param(
-  [string]$SourcePath = "allin.png"
+  [string]$SourcePath = "installer/brand/allin.png"
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$resolvedSourcePath = if ([System.IO.Path]::IsPathRooted($SourcePath)) {
-  $SourcePath
-} else {
-  Join-Path $repoRoot $SourcePath
+$resolvedSourcePath = if ([System.IO.Path]::IsPathRooted($SourcePath)) { $SourcePath } else { Join-Path $repoRoot $SourcePath }
+
+if (-not (Test-Path -LiteralPath $resolvedSourcePath) -and $SourcePath -eq "installer/brand/allin.png") {
+  $legacyRootSourcePath = Join-Path $repoRoot "allin.png"
+  if (Test-Path -LiteralPath $legacyRootSourcePath) {
+    $resolvedSourcePath = $legacyRootSourcePath
+  }
 }
 
 if (-not (Test-Path -LiteralPath $resolvedSourcePath)) {
