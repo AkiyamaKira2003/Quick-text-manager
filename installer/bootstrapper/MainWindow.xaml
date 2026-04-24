@@ -239,6 +239,7 @@
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <TextBlock Text="K I R A  L C"
                        Foreground="#FF4655"
@@ -272,13 +273,33 @@
                       MouseEnter="PreviewActionVisual"
                       MouseLeave="RestoreActionVisual"
                       Click="InstallOrLaunch">
-                <TextBlock x:Name="LaunchButtonLabel"
-                           Text="▶ LAUNCH"
-                           Foreground="#111111"
-                           FontFamily="Bahnschrift"
-                           FontSize="21"
-                           FontWeight="Black"
-                           TextAlignment="Center" />
+                <Grid Width="244" Height="54" ClipToBounds="True">
+                  <Rectangle x:Name="LaunchButtonSweep"
+                             Width="72"
+                             Opacity="0"
+                             HorizontalAlignment="Left"
+                             IsHitTestVisible="False">
+                    <Rectangle.RenderTransform>
+                      <TranslateTransform x:Name="LaunchButtonSweepTransform" X="-90" />
+                    </Rectangle.RenderTransform>
+                    <Rectangle.Fill>
+                      <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#00FFFFFF" Offset="0" />
+                        <GradientStop Color="#95FFFFFF" Offset="0.5" />
+                        <GradientStop Color="#00FFFFFF" Offset="1" />
+                      </LinearGradientBrush>
+                    </Rectangle.Fill>
+                  </Rectangle>
+                  <TextBlock x:Name="LaunchButtonLabel"
+                             Text="▶ LAUNCH"
+                             Foreground="#111111"
+                             FontFamily="Bahnschrift"
+                             FontSize="21"
+                             FontWeight="Black"
+                             TextAlignment="Center"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center" />
+                </Grid>
               </Button>
 
               <Button x:Name="ActionMenuButton"
@@ -333,6 +354,57 @@
                 </StackPanel>
               </Border>
             </Popup>
+
+            <Border x:Name="TransferPanel"
+                    Grid.Row="4"
+                    Width="392"
+                    CornerRadius="14"
+                    Background="#D10A0D10"
+                    BorderBrush="#22FFFFFF"
+                    BorderThickness="1"
+                    Padding="14"
+                    Margin="0,16,0,0"
+                    Visibility="Collapsed">
+              <StackPanel>
+                <Grid>
+                  <TextBlock x:Name="TransferTitleText"
+                             Text="Installing Quick Text"
+                             Foreground="#F2F2F2"
+                             FontFamily="Bahnschrift"
+                             FontSize="13"
+                             FontWeight="Bold" />
+                  <TextBlock x:Name="TransferPercentText"
+                             Text="0%"
+                             Foreground="#D6AA4F"
+                             FontFamily="Bahnschrift"
+                             FontSize="13"
+                             FontWeight="Bold"
+                             HorizontalAlignment="Right" />
+                </Grid>
+                <ProgressBar x:Name="TransferProgressBar"
+                             Height="8"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="0"
+                             Foreground="#D6AA4F"
+                             Background="#20252A"
+                             BorderBrush="#33FFFFFF"
+                             Margin="0,11,0,0" />
+                <Grid Margin="0,9,0,0">
+                  <TextBlock x:Name="TransferStatusText"
+                             Text="Preparing"
+                             Foreground="#9FFFFFFF"
+                             FontFamily="Segoe UI"
+                             FontSize="12" />
+                  <TextBlock x:Name="TransferSizeText"
+                             Text="0 B / 0 B · 0 B/s"
+                             Foreground="#80FFFFFF"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             HorizontalAlignment="Right" />
+                </Grid>
+              </StackPanel>
+            </Border>
           </Grid>
 
           <Image Canvas.Left="86"

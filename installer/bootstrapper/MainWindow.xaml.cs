@@ -36,6 +36,9 @@ public partial class MainWindow
     private bool _installComplete;
     private bool _installDialogRepairMode;
     private bool _installing;
+    private long _transferLastBytes;
+    private DateTime _transferLastSampleAt = DateTime.UtcNow;
+    private long _transferTotalBytes;
     private bool _showingHeroA = true;
     private bool _showingCoreA = true;
     private bool _showingSceneA = true;
@@ -372,13 +375,16 @@ public partial class MainWindow
         _installing = true;
         AddActivity("Install started.", "info");
         TransitionToState(SetupState.Loading, "Installing Quick Text module...");
+        BeginTransferUi("Installing Quick Text", GetInstallPayloadBytes());
 
         try
         {
             var progress = new Progress<double>(value =>
             {
+                var detail = value < 0.92 ? "Deploying files and shortcuts" : "Finalizing install";
                 InstallProgress.Value = Math.Max(6, Math.Min(100, value * 100));
-                ProgressText.Text = value < 0.92 ? "Deploying files and shortcuts" : "Finalizing install";
+                ProgressText.Text = detail;
+                UpdateTransferUi(value, detail);
             });
 
             var exitCode = await InstallerEngine
@@ -392,6 +398,7 @@ public partial class MainWindow
 
             _installComplete = true;
             InstallProgress.Value = 100;
+            CompleteTransferUi("Install complete");
             AddActivity("Install complete. Quick Text is ready.", "success");
             TransitionToState(SetupState.Success, "Quick Text is ready inside Kira LC.");
         }
@@ -401,6 +408,7 @@ public partial class MainWindow
             AddActivity($"Install failed: {error.Message}", "error");
             TransitionToState(SetupState.Error, "Install failed.");
             ProgressText.Text = error.Message;
+            TransferStatusText.Text = error.Message;
             System.Windows.MessageBox.Show(
                 error.Message,
                 "Kira LC Setup",
@@ -410,6 +418,7 @@ public partial class MainWindow
         finally
         {
             _installing = false;
+            EndTransferUi();
             UpdateActionAvailability();
         }
     }
@@ -515,6 +524,7 @@ public partial class MainWindow
         _installing = true;
         AddActivity("Remove started.", "info");
         TransitionToState(SetupState.Removing, "Removing Quick Text module...");
+        BeginTransferUi("Uninstalling Quick Text", GetDirectorySize(InstallPathBox.Text));
 
         try
         {
@@ -529,7 +539,7 @@ public partial class MainWindow
                 throw new InvalidOperationException("Could not start the Quick Text uninstaller.");
             }
 
-            await process.WaitForExitAsync().ConfigureAwait(true);
+            await TrackUninstallProgressAsync(process).ConfigureAwait(true);
             _installComplete = IsQuickTextInstalled();
 
             if (_installComplete)
@@ -540,6 +550,7 @@ public partial class MainWindow
             }
 
             AddActivity("Quick Text removed.", "success");
+            CompleteTransferUi("Uninstall complete");
             TransitionToState(SetupState.Idle, "Quick Text removed. Ready to install again.");
         }
         catch (Exception error)
@@ -547,6 +558,7 @@ public partial class MainWindow
             AddActivity($"Remove failed: {error.Message}", "error");
             TransitionToState(SetupState.Error, "Remove failed.");
             ProgressText.Text = error.Message;
+            TransferStatusText.Text = error.Message;
             System.Windows.MessageBox.Show(
                 error.Message,
                 "Kira LC Setup",
@@ -556,8 +568,150 @@ public partial class MainWindow
         finally
         {
             _installing = false;
+            EndTransferUi();
             UpdateActionAvailability();
         }
+    }
+
+    private async Task TrackUninstallProgressAsync(Process process)
+    {
+        var progress = 0.06;
+        UpdateTransferUi(progress, "Starting uninstaller");
+
+        while (!process.HasExited)
+        {
+            progress = Math.Min(0.94, progress + 0.024);
+            UpdateTransferUi(progress, "Removing files and shortcuts");
+            await Task.Delay(260).ConfigureAwait(true);
+        }
+
+        await process.WaitForExitAsync().ConfigureAwait(true);
+        UpdateTransferUi(1, "Uninstall complete");
+    }
+
+    private void BeginTransferUi(string title, long totalBytes)
+    {
+        _transferTotalBytes = Math.Max(1, totalBytes);
+        _transferLastBytes = 0;
+        _transferLastSampleAt = DateTime.UtcNow;
+
+        TransferPanel.Visibility = Visibility.Visible;
+        TransferTitleText.Text = title;
+        TransferProgressBar.Value = 0;
+        TransferPercentText.Text = "0%";
+        TransferStatusText.Text = "Preparing";
+        TransferSizeText.Text = $"0 B / {FormatBytes(_transferTotalBytes)} · 0 B/s";
+        LaunchButtonLabel.Text = "0%";
+
+        LaunchButtonSweep.Opacity = 0.72;
+        var sweep = new DoubleAnimation
+        {
+            From = -90,
+            To = 270,
+            Duration = TimeSpan.FromMilliseconds(1180),
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
+        LaunchButtonSweepTransform.BeginAnimation(TranslateTransform.XProperty, sweep);
+    }
+
+    private void UpdateTransferUi(double progress, string detail)
+    {
+        var clampedProgress = Math.Max(0, Math.Min(1, progress));
+        var percent = Math.Round(clampedProgress * 100);
+        var currentBytes = (long)Math.Round(_transferTotalBytes * clampedProgress);
+        var now = DateTime.UtcNow;
+        var elapsed = Math.Max(0.001, (now - _transferLastSampleAt).TotalSeconds);
+        var speed = Math.Max(0, (currentBytes - _transferLastBytes) / elapsed);
+
+        TransferProgressBar.Value = percent;
+        TransferPercentText.Text = $"{percent:0}%";
+        TransferStatusText.Text = detail;
+        TransferSizeText.Text = $"{FormatBytes(currentBytes)} / {FormatBytes(_transferTotalBytes)} · {FormatBytes(speed)}/s";
+        LaunchButtonLabel.Text = $"{percent:0}%";
+
+        _transferLastBytes = currentBytes;
+        _transferLastSampleAt = now;
+    }
+
+    private void CompleteTransferUi(string detail)
+    {
+        UpdateTransferUi(1, detail);
+    }
+
+    private void EndTransferUi()
+    {
+        LaunchButtonSweepTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        LaunchButtonSweep.Opacity = 0;
+        TransferPanel.Visibility = Visibility.Collapsed;
+        _transferLastBytes = 0;
+        _transferTotalBytes = 0;
+    }
+
+    private static long GetInstallPayloadBytes()
+    {
+        using var stream = typeof(MainWindow).Assembly.GetManifestResourceStream("QuickTextSetupEngine.exe");
+        return stream?.Length ?? 0;
+    }
+
+    private static long GetDirectorySize(string directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath))
+        {
+            return 0;
+        }
+
+        long total = 0;
+        var pending = new Stack<string>();
+        pending.Push(directoryPath);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(current))
+                {
+                    try
+                    {
+                        total += new FileInfo(file).Length;
+                    }
+                    catch (IOException)
+                    {
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                    }
+                }
+
+                foreach (var child in Directory.EnumerateDirectories(current))
+                {
+                    pending.Push(child);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        return total;
+    }
+
+    private static string FormatBytes(double bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = Math.Max(0, bytes);
+        var unit = 0;
+
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0 ? $"{value:0} {units[unit]}" : $"{value:0.0} {units[unit]}";
     }
 
     private void SelectLocalSection(object sender, RoutedEventArgs e)
