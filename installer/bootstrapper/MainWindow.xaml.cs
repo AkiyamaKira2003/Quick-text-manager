@@ -34,7 +34,12 @@ public partial class MainWindow
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Programs",
         "Quick Text");
+    private readonly string _autoUpdatePreferencePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Kira LC",
+        "setup-auto-update.flag");
 
+    private bool _autoUpdateEnabled;
     private bool _installComplete;
     private bool _installDialogRepairMode;
     private bool _installing;
@@ -77,10 +82,15 @@ public partial class MainWindow
 
     public MainWindow()
     {
+        _autoUpdateEnabled = LoadAutoUpdatePreference();
         InitializeComponent();
         InstallPathBox.Text = _defaultInstallPath;
         SyncInstallPathPreview();
-        Loaded += (_, _) => ApplyRoundedShellClip();
+        Loaded += async (_, _) =>
+        {
+            ApplyRoundedShellClip();
+            await MaybeRunAutoUpdateAsync().ConfigureAwait(true);
+        };
         SizeChanged += (_, _) => ApplyRoundedShellClip();
         WarmImageCache();
 
@@ -267,20 +277,104 @@ public partial class MainWindow
 
     private void UpdateAutoUpdateIndicator()
     {
-        var color = _updateAvailable
+        var statusColor = _updateAvailable
             ? MediaColor.FromRgb(255, 190, 42)
             : _installComplete
                 ? MediaColor.FromRgb(56, 242, 122)
                 : MediaColor.FromRgb(92, 200, 255);
+        var mutedColor = MediaColor.FromRgb(148, 156, 166);
+        var enabledColor = MediaColor.FromRgb(56, 242, 122);
 
-        AutoUpdateDot.Fill = new SolidColorBrush(color);
+        AutoUpdateDot.Fill = new SolidColorBrush(statusColor);
+        AutoUpdateHint.BorderBrush = new SolidColorBrush(
+            _updateAvailable ? MediaColor.FromRgb(150, 117, 38) : MediaColor.FromRgb(46, 54, 62));
+        AutoUpdateHint.Background = new SolidColorBrush(
+            _updateAvailable ? MediaColor.FromArgb(44, 255, 190, 42) : MediaColor.FromArgb(18, 255, 255, 255));
+        AutoUpdateCheckBox.Background = new SolidColorBrush(
+            _autoUpdateEnabled ? enabledColor : MediaColor.FromArgb(12, 255, 255, 255));
+        AutoUpdateCheckBox.BorderBrush = new SolidColorBrush(
+            _autoUpdateEnabled ? enabledColor : MediaColor.FromRgb(92, 101, 112));
+        AutoUpdateCheckMark.Text = _autoUpdateEnabled ? "✓" : string.Empty;
         AutoUpdateStateText.Text = _updateAvailable
-            ? "✓ Auto update: update ready"
+            ? _autoUpdateEnabled ? "Auto update on" : "Auto update off"
             : _installComplete
-                ? "✓ Auto update"
-                : "Auto update after install";
+                ? _autoUpdateEnabled ? "Auto update on" : "Auto update off"
+                : _autoUpdateEnabled ? "Auto update after install" : "Auto update off";
         AutoUpdateStateText.Foreground = new SolidColorBrush(
-            _updateAvailable ? MediaColor.FromRgb(255, 214, 112) : MediaColor.FromRgb(148, 156, 166));
+            _autoUpdateEnabled ? MediaColor.FromRgb(230, 247, 236) : mutedColor);
+        UpdateAvailabilityText.Text = _updateAvailable
+            ? "Update ready"
+            : _installComplete
+                ? "Quick Text current"
+                : "Install Quick Text first";
+        UpdateAvailabilityText.Foreground = new SolidColorBrush(statusColor);
+    }
+
+    private async void ToggleAutoUpdate(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (_installing)
+        {
+            return;
+        }
+
+        _autoUpdateEnabled = !_autoUpdateEnabled;
+        SaveAutoUpdatePreference();
+        UpdateAutoUpdateIndicator();
+        AddActivity(_autoUpdateEnabled ? "Auto update enabled." : "Auto update disabled.", "info");
+
+        if (_autoUpdateEnabled)
+        {
+            await MaybeRunAutoUpdateAsync().ConfigureAwait(true);
+        }
+    }
+
+    private bool LoadAutoUpdatePreference()
+    {
+        try
+        {
+            return File.Exists(_autoUpdatePreferencePath) &&
+                string.Equals(File.ReadAllText(_autoUpdatePreferencePath).Trim(), "1", StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private void SaveAutoUpdatePreference()
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(_autoUpdatePreferencePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(_autoUpdatePreferencePath, _autoUpdateEnabled ? "1" : "0");
+        }
+        catch (Exception error)
+        {
+            AddActivity($"Auto update setting could not be saved: {error.Message}", "warning");
+        }
+    }
+
+    private async Task MaybeRunAutoUpdateAsync()
+    {
+        if (!_autoUpdateEnabled || _installing)
+        {
+            return;
+        }
+
+        RefreshInstallState();
+        if (!_updateAvailable)
+        {
+            return;
+        }
+
+        AddActivity("Auto update started because a newer Quick Text package is available.", "warning");
+        await InstallQuickTextAsync().ConfigureAwait(true);
     }
 
     private void InstallOrLaunch(object sender, RoutedEventArgs e)
@@ -1258,7 +1352,9 @@ public partial class MainWindow
                 SetVisualState(UpdateHeroSource, UpdateCoreSource, UpdateSceneSource);
                 LaunchButtonLabel.Text = "UPDATE";
                 StatusText.Text = detail ?? "Quick Text update is ready.";
-                ProgressText.Text = "Auto update can refresh the installed module";
+                ProgressText.Text = _autoUpdateEnabled
+                    ? "Auto update is on and can refresh the module"
+                    : "Update ready. Enable auto update or choose Update";
                 InstallProgress.Value = 100;
                 StepText.Text = "Module update available: Quick Text";
                 QuickTextModuleState.Text = "Update";
