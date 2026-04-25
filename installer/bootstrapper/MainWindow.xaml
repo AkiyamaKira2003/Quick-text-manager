@@ -257,50 +257,42 @@
             </LinearGradientBrush>
           </Rectangle.Fill>
         </Rectangle>
-        <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.12" IsHitTestVisible="False" />
-
-        <Border Margin="46,54,56,36"
-                CornerRadius="28"
-                BorderBrush="#3A54E0FF"
-                BorderThickness="1"
-                Background="#08000000"
-                IsHitTestVisible="False">
-          <Border.Effect>
-            <DropShadowEffect Color="#163DEBFF" BlurRadius="20" ShadowDepth="0" Opacity="0.58" />
-          </Border.Effect>
-        </Border>
+        <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.34" IsHitTestVisible="False" />
 
         <Canvas Width="1228" Height="928">
-          <Image Canvas.Left="104"
-                 Canvas.Top="98"
+          <Image Canvas.Left="150"
+                 Canvas.Top="78"
                  Width="560"
-                 Height="96"
+                 Height="187"
                  Source="Assets/header-strip.png"
                  Stretch="Fill"
-                 Opacity="0.2"
+                 Opacity="0.74"
                  IsHitTestVisible="False" />
 
-          <Grid Canvas.Left="104" Canvas.Top="126" Width="552" Panel.ZIndex="20">
+          <TextBlock Canvas.Left="250"
+                     Canvas.Top="170"
+                     Text="K I R A  L C"
+                     Foreground="#FF4655"
+                     FontFamily="Bahnschrift"
+                     FontSize="17"
+                     FontWeight="Bold"
+                     Panel.ZIndex="20" />
+
+          <Grid Canvas.Left="190" Canvas.Top="270" Width="552" Panel.ZIndex="20">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <TextBlock Text="K I R A  L C"
-                       Foreground="#FF4655"
-                       FontFamily="Bahnschrift"
-                       FontSize="17"
-                       FontWeight="Bold" />
-            <TextBlock Grid.Row="1"
+            <TextBlock Grid.Row="0"
                        Text="QUICK TEXT"
                        Foreground="#F2F2F2"
                        FontFamily="Bahnschrift"
                        FontSize="56"
                        FontWeight="Black"
-                       Margin="0,16,0,0" />
-            <TextBlock Grid.Row="2"
+                       Margin="0" />
+            <TextBlock Grid.Row="1"
                        Width="520"
                        HorizontalAlignment="Left"
                        Text="Dịch chat Việt - Hàn, đọc ảnh tiếng Hàn sang tiếng Việt, và thao tác cực nhanh khi đang chơi game Hàn."
@@ -311,7 +303,7 @@
                        TextWrapping="Wrap"
                        Margin="0,10,0,0" />
 
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,24,0,0">
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,24,0,0">
               <Button x:Name="InstallButton"
                       Width="244"
                       Height="54"
@@ -422,7 +414,7 @@
             </Popup>
 
             <Border x:Name="TransferPanel"
-                    Grid.Row="4"
+                    Grid.Row="3"
                     Width="392"
                     CornerRadius="14"
                     Background="#FA0A0D10"
@@ -582,8 +574,8 @@
 
           <Border Grid.Row="1" Height="430" CornerRadius="18" Background="#0B0B0D" BorderBrush="#18FFFFFF" BorderThickness="1" ClipToBounds="True" Margin="0,18,0,0">
             <Grid>
-              <Image x:Name="HeroImageA" Stretch="UniformToFill" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
-              <Image x:Name="HeroImageB" Stretch="UniformToFill" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="HeroImageA" Stretch="Uniform" Opacity="1" RenderOptions.BitmapScalingMode="HighQuality" />
+              <Image x:Name="HeroImageB" Stretch="Uniform" Opacity="0" RenderOptions.BitmapScalingMode="HighQuality" />
               <Rectangle>
                 <Rectangle.Fill>
                   <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">

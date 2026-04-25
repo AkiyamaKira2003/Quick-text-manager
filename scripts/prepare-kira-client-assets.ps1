@@ -118,6 +118,99 @@ public static class KiraClientImageTools
         }
     }
 
+    public static void SaveContainCrop(string input, string output, int x, int y, int width, int height, int targetWidth, int targetHeight, bool blackToAlpha, int threshold, int feather)
+    {
+        using (var image = Image.FromFile(input))
+        using (var bitmap = new Bitmap(targetWidth, targetHeight, PixelFormat.Format32bppArgb))
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            PrepareOutput(output);
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.Clear(Color.Transparent);
+            graphics.DrawImage(image, ContainRect(width, height, targetWidth, targetHeight), new Rectangle(x, y, width, height), GraphicsUnit.Pixel);
+            if (blackToAlpha)
+            {
+                ApplyBlackToAlpha(bitmap, threshold, feather);
+            }
+            bitmap.Save(output, ImageFormat.Png);
+        }
+    }
+
+    public static void SaveAlignedContentCrop(string input, string output, int x, int y, int width, int height, int targetWidth, int targetHeight, int fitWidth, int fitHeight, int centerX, int centerY, bool blackToAlpha, int contentThreshold, int alphaThreshold, int feather)
+    {
+        using (var source = new Bitmap(input))
+        using (var bitmap = new Bitmap(targetWidth, targetHeight, PixelFormat.Format32bppArgb))
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            PrepareOutput(output);
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.Clear(Color.Transparent);
+
+            Rectangle panel = new Rectangle(x, y, width, height);
+            Rectangle content = FindContentBounds(source, panel, contentThreshold);
+            content.Inflate(18, 18);
+            content.Intersect(panel);
+
+            double scale = Math.Min(fitWidth / (double)content.Width, fitHeight / (double)content.Height);
+            int outputWidth = Math.Max(1, (int)Math.Round(content.Width * scale));
+            int outputHeight = Math.Max(1, (int)Math.Round(content.Height * scale));
+            int left = centerX - outputWidth / 2;
+            int top = centerY - outputHeight / 2;
+
+            graphics.DrawImage(source, new Rectangle(left, top, outputWidth, outputHeight), content, GraphicsUnit.Pixel);
+            if (blackToAlpha)
+            {
+                ApplyBlackToAlpha(bitmap, alphaThreshold, feather);
+            }
+            bitmap.Save(output, ImageFormat.Png);
+        }
+    }
+
+    public static void TintExisting(string input, string output, int red, int green, int blue, double glowStrength, double metalStrength, double brightness)
+    {
+        using (var bitmap = new Bitmap(input))
+        {
+            PrepareOutput(output);
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    Color color = bitmap.GetPixel(x, y);
+                    if (color.A == 0)
+                    {
+                        continue;
+                    }
+
+                    int max = Math.Max(color.R, Math.Max(color.G, color.B));
+                    if (max <= 4)
+                    {
+                        continue;
+                    }
+
+                    int min = Math.Min(color.R, Math.Min(color.G, color.B));
+                    double saturation = max <= 0 ? 0 : (max - min) / (double)max;
+                    double luma = (0.2126 * color.R) + (0.7152 * color.G) + (0.0722 * color.B);
+                    double bright = max / 255.0;
+                    double tintAmount = Clamp01(metalStrength + (saturation * glowStrength) + (bright * glowStrength * 0.18));
+                    double targetScale = Math.Min(1.35, (0.32 + (luma / 255.0)) * brightness);
+
+                    int outR = ClampByte((color.R * (1 - tintAmount)) + (red * targetScale * tintAmount));
+                    int outG = ClampByte((color.G * (1 - tintAmount)) + (green * targetScale * tintAmount));
+                    int outB = ClampByte((color.B * (1 - tintAmount)) + (blue * targetScale * tintAmount));
+                    bitmap.SetPixel(x, y, Color.FromArgb(color.A, outR, outG, outB));
+                }
+            }
+
+            bitmap.Save(output, ImageFormat.Png);
+        }
+    }
+
     public static void BlackToAlpha(string input, string output, int threshold, bool cropToContent, int padding, int targetWidth, int targetHeight)
     {
         BlackToAlpha(input, output, threshold, cropToContent, padding, targetWidth, targetHeight, 0);
@@ -169,6 +262,24 @@ public static class KiraClientImageTools
         return new Rectangle(0, top, sourceWidth, height);
     }
 
+    private static Rectangle ContainRect(int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
+    {
+        double sourceRatio = sourceWidth / (double)sourceHeight;
+        double targetRatio = targetWidth / (double)targetHeight;
+        if (sourceRatio > targetRatio)
+        {
+            int width = targetWidth;
+            int height = (int)Math.Round(targetWidth / sourceRatio);
+            int top = (targetHeight - height) / 2;
+            return new Rectangle(0, top, width, height);
+        }
+
+        int outputHeight = targetHeight;
+        int outputWidth = (int)Math.Round(targetHeight * sourceRatio);
+        int left = (targetWidth - outputWidth) / 2;
+        return new Rectangle(left, 0, outputWidth, outputHeight);
+    }
+
     private static Rectangle FindContentBounds(Bitmap bitmap, int threshold)
     {
         int minX = bitmap.Width;
@@ -196,6 +307,38 @@ public static class KiraClientImageTools
         if (maxX < minX || maxY < minY)
         {
             return new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        }
+
+        return Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
+    }
+
+    private static Rectangle FindContentBounds(Bitmap bitmap, Rectangle area, int threshold)
+    {
+        int minX = area.Right;
+        int minY = area.Bottom;
+        int maxX = area.Left - 1;
+        int maxY = area.Top - 1;
+
+        for (int y = area.Top; y < area.Bottom; y++)
+        {
+            for (int x = area.Left; x < area.Right; x++)
+            {
+                Color color = bitmap.GetPixel(x, y);
+                if (Math.Max(color.R, Math.Max(color.G, color.B)) <= threshold)
+                {
+                    continue;
+                }
+
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+
+        if (maxX < minX || maxY < minY)
+        {
+            return area;
         }
 
         return Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
@@ -239,6 +382,20 @@ public static class KiraClientImageTools
             Directory.CreateDirectory(directory);
         }
     }
+
+    private static double Clamp01(double value)
+    {
+        if (value < 0) return 0;
+        if (value > 1) return 1;
+        return value;
+    }
+
+    private static int ClampByte(double value)
+    {
+        if (value < 0) return 0;
+        if (value > 255) return 255;
+        return (int)Math.Round(value);
+    }
 }
 "@
 
@@ -276,34 +433,55 @@ Copy-Asset $quickTextHero @(
   (Join-Path $bootstrapperAssets "quicktext-hero.png")
 )
 
-# Synchronized Quick Text states from allstate.png, 3x2 grid:
-# top-left missing, top-center installing, top-right installed,
-# bottom-left update ready, bottom-center removing, bottom-right attention.
+# Registered Quick Text states from allstate.png. All states use the same
+# source geometry and only change tint, so crossfades cannot drift.
 $allstateSize = [KiraClientImageTools]::GetSize($sourceAllstate)
 $allstatePanelWidth = [int][Math]::Floor($allstateSize.Width / 3)
 $allstatePanelHeight = [int][Math]::Floor($allstateSize.Height / 2)
+$registeredStateSourceX = 0
+$registeredStateSourceY = 0
+$registeredBrandBase = Join-Path $assetRoot "brand/_quicktext-registered-base.png"
+$registeredHeroBase = Join-Path $assetRoot "states/_quicktext-registered-hero.png"
+$registeredHeroAlphaBase = Join-Path $assetRoot "states/_quicktext-registered-hero-alpha.png"
+
+[KiraClientImageTools]::SaveAlignedContentCrop($sourceAllstate, $registeredBrandBase, $registeredStateSourceX, $registeredStateSourceY, $allstatePanelWidth, $allstatePanelHeight, 1024, 1792, 820, 820, 512, 700, $false, 120, 0, 0)
+[KiraClientImageTools]::SaveAlignedContentCrop($sourceAllstate, $registeredHeroBase, $registeredStateSourceX, $registeredStateSourceY, $allstatePanelWidth, $allstatePanelHeight, 1280, 720, 520, 520, 640, 360, $false, 120, 0, 0)
+[KiraClientImageTools]::SaveAlignedContentCrop($sourceAllstate, $registeredHeroAlphaBase, $registeredStateSourceX, $registeredStateSourceY, $allstatePanelWidth, $allstatePanelHeight, 1024, 1536, 820, 820, 512, 760, $true, 120, 18, 36)
+
 $quickTextStates = @(
-  @{ File = "quicktext-missing.png"; Installer = "missing-hero.png"; Brand = ""; X = 0; Y = 0 },
-  @{ File = "quicktext-installing.png"; Installer = "install-hero.png"; Brand = "sidebar.png"; X = 1; Y = 0 },
-  @{ File = "quicktext-installed.png"; Installer = "success-hero.png"; Brand = ""; X = 2; Y = 0 },
-  @{ File = "quicktext-update.png"; Installer = "update-hero.png"; Brand = ""; X = 0; Y = 1 },
-  @{ File = "quicktext-removing.png"; Installer = "uninstall-hero.png"; Brand = "uninstaller-sidebar.png"; X = 1; Y = 1 },
-  @{ File = "quicktext-error.png"; Installer = "error-hero.png"; Brand = ""; X = 2; Y = 1 }
+  @{ File = "quicktext-missing.png"; Hero = "missing-hero.png"; HeroAlpha = "missing-hero-alpha.png"; Brand = ""; R = 70; G = 214; B = 255; Glow = 0.12; Metal = 0.03; Brightness = 0.84 },
+  @{ File = "quicktext-installing.png"; Hero = "install-hero.png"; HeroAlpha = "install-hero-alpha.png"; Brand = "sidebar.png"; R = 40; G = 211; B = 255; Glow = 0.62; Metal = 0.08; Brightness = 1.08 },
+  @{ File = "quicktext-installed.png"; Hero = "success-hero.png"; HeroAlpha = "success-hero-alpha.png"; Brand = ""; R = 80; G = 245; B = 74; Glow = 0.78; Metal = 0.1; Brightness = 1.1 },
+  @{ File = "quicktext-update.png"; Hero = "update-hero.png"; HeroAlpha = "update-hero-alpha.png"; Brand = ""; R = 255; G = 190; B = 42; Glow = 0.72; Metal = 0.08; Brightness = 1.06 },
+  @{ File = "quicktext-removing.png"; Hero = "uninstall-hero.png"; HeroAlpha = "uninstall-hero-alpha.png"; Brand = "uninstaller-sidebar.png"; R = 255; G = 106; B = 45; Glow = 0.76; Metal = 0.09; Brightness = 1.03 },
+  @{ File = "quicktext-error.png"; Hero = "error-hero.png"; HeroAlpha = "error-hero-alpha.png"; Brand = ""; R = 255; G = 56; B = 72; Glow = 0.88; Metal = 0.1; Brightness = 1.02 }
 )
 
 foreach ($state in $quickTextStates) {
   $brandOutput = Join-Path $assetRoot ("brand/" + $state.File)
-  [KiraClientImageTools]::SaveCrop($sourceAllstate, $brandOutput, $state.X * $allstatePanelWidth, $state.Y * $allstatePanelHeight, $allstatePanelWidth, $allstatePanelHeight, 1024, 1024, $false, 0)
+  $heroOutput = Join-Path $assetRoot ("states/" + $state.Hero)
+  $heroAlphaOutput = Join-Path $assetRoot ("states/" + $state.HeroAlpha)
+
+  [KiraClientImageTools]::TintExisting($registeredBrandBase, $brandOutput, $state.R, $state.G, $state.B, $state.Glow, $state.Metal, $state.Brightness)
+  [KiraClientImageTools]::TintExisting($registeredHeroBase, $heroOutput, $state.R, $state.G, $state.B, $state.Glow, $state.Metal, $state.Brightness)
+  [KiraClientImageTools]::TintExisting($registeredHeroAlphaBase, $heroAlphaOutput, $state.R, $state.G, $state.B, $state.Glow, $state.Metal, $state.Brightness)
 
   $destinations = @(
-    (Join-Path $publicRoot ("brand/" + $state.File)),
-    (Join-Path $bootstrapperAssets $state.Installer)
+    (Join-Path $publicRoot ("brand/" + $state.File))
   )
   if (-not [string]::IsNullOrWhiteSpace($state.Brand)) {
     $destinations += Join-Path $brandAssets $state.Brand
   }
   Copy-Asset $brandOutput $destinations
+  Copy-Asset $heroOutput @(
+    (Join-Path $bootstrapperAssets $state.Hero)
+  )
+  Copy-Asset $heroAlphaOutput @(
+    (Join-Path $bootstrapperAssets $state.HeroAlpha)
+  )
 }
+
+Remove-Item -LiteralPath $registeredBrandBase, $registeredHeroBase, $registeredHeroAlphaBase -Force
 
 # Energy core top-row states.
 $coreSize = [KiraClientImageTools]::GetSize($sourceCore)
