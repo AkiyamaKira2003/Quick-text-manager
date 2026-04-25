@@ -257,28 +257,46 @@
             </LinearGradientBrush>
           </Rectangle.Fill>
         </Rectangle>
-        <Image Source="Assets/frame-overlay.png" Stretch="Fill" Opacity="0.34" IsHitTestVisible="False" />
+        <Canvas Width="1228"
+                Height="928"
+                ClipToBounds="True"
+                IsHitTestVisible="False">
+          <Image Canvas.Left="-282"
+                 Canvas.Top="-40"
+                 Width="1792"
+                 Height="1008"
+                 Source="Assets/frame-overlay.png"
+                 Stretch="Uniform"
+                 Opacity="0.42" />
+        </Canvas>
 
         <Canvas Width="1228" Height="928">
-          <Image Canvas.Left="150"
-                 Canvas.Top="78"
-                 Width="560"
-                 Height="187"
-                 Source="Assets/header-strip.png"
-                 Stretch="Fill"
-                 Opacity="0.74"
-                 IsHitTestVisible="False" />
+          <Grid Canvas.Left="176"
+                Canvas.Top="132"
+                Width="232"
+                Height="76"
+                ClipToBounds="True"
+                Panel.ZIndex="18"
+                IsHitTestVisible="False">
+            <Image Source="Assets/header-strip.png"
+                   Width="520"
+                   Height="173"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Margin="-38,-52,0,0"
+                   Stretch="Uniform"
+                   Opacity="0.86" />
+            <TextBlock Text="K I R A  L C"
+                       Foreground="#FF4655"
+                       FontFamily="Bahnschrift"
+                       FontSize="17"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Margin="0,2,0,0" />
+          </Grid>
 
-          <TextBlock Canvas.Left="250"
-                     Canvas.Top="170"
-                     Text="K I R A  L C"
-                     Foreground="#FF4655"
-                     FontFamily="Bahnschrift"
-                     FontSize="17"
-                     FontWeight="Bold"
-                     Panel.ZIndex="20" />
-
-          <Grid Canvas.Left="190" Canvas.Top="270" Width="552" Panel.ZIndex="20">
+          <Grid Canvas.Left="190" Canvas.Top="278" Width="552" Panel.ZIndex="20">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />

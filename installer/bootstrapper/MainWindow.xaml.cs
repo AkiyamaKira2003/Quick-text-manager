@@ -685,9 +685,9 @@ public partial class MainWindow
                 throw new IOException("QuickText.exe is still present after uninstall.");
             }
 
-            AddActivity("Quick Text removed.", "success");
-            CompleteTransferUi("Uninstall complete");
-            TransitionToState(SetupState.Idle, "Quick Text removed. Ready to install again.");
+            AddActivity("Quick Text removed. Sad to see you go.", "success");
+            CompleteTransferUi("Quick Text removed");
+            TransitionToState(SetupState.Idle, "Quick Text removed. Sad to see you go.");
         }
         catch (Exception error)
         {
@@ -1424,11 +1424,13 @@ public partial class MainWindow
     private void UpdateActionAvailability()
     {
         var busy = _installing || _currentState is SetupState.Loading or SetupState.Launching or SetupState.Removing;
-        InstallButton.IsEnabled = !busy;
-        InstallButton.Opacity = busy ? 0.64 : 1;
+        InstallButton.IsEnabled = true;
+        InstallButton.IsHitTestVisible = !busy;
+        InstallButton.Opacity = 1;
         InstallPathBox.IsEnabled = !busy;
-        ActionMenuButton.IsEnabled = !busy;
-        ActionMenuButton.Opacity = busy ? 0.58 : 1;
+        ActionMenuButton.IsEnabled = true;
+        ActionMenuButton.IsHitTestVisible = !busy;
+        ActionMenuButton.Opacity = busy ? 0.86 : 1;
         InstallDialogPrimaryButton.IsEnabled = !busy;
         InstallDialogBrowseButton.IsEnabled = !busy;
 
