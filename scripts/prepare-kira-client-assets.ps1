@@ -197,12 +197,13 @@ public static class KiraClientImageTools
                     double saturation = max <= 0 ? 0 : (max - min) / (double)max;
                     double luma = (0.2126 * color.R) + (0.7152 * color.G) + (0.0722 * color.B);
                     double bright = max / 255.0;
-                    double tintAmount = Clamp01(metalStrength + (saturation * glowStrength) + (bright * glowStrength * 0.18));
-                    double targetScale = Math.Min(1.35, (0.32 + (luma / 255.0)) * brightness);
+                    double tintAmount = Clamp01(metalStrength + (saturation * glowStrength) + (bright * glowStrength * 0.28));
+                    double targetScale = Math.Min(1.78, (0.46 + (luma / 235.0)) * brightness);
+                    double bloom = Math.Pow(bright, 1.18) * glowStrength * brightness * 64;
 
-                    int outR = ClampByte((color.R * (1 - tintAmount)) + (red * targetScale * tintAmount));
-                    int outG = ClampByte((color.G * (1 - tintAmount)) + (green * targetScale * tintAmount));
-                    int outB = ClampByte((color.B * (1 - tintAmount)) + (blue * targetScale * tintAmount));
+                    int outR = ClampByte((color.R * (1 - tintAmount)) + (red * targetScale * tintAmount) + (red / 255.0 * bloom));
+                    int outG = ClampByte((color.G * (1 - tintAmount)) + (green * targetScale * tintAmount) + (green / 255.0 * bloom));
+                    int outB = ClampByte((color.B * (1 - tintAmount)) + (blue * targetScale * tintAmount) + (blue / 255.0 * bloom));
                     bitmap.SetPixel(x, y, Color.FromArgb(color.A, outR, outG, outB));
                 }
             }
@@ -449,12 +450,12 @@ $registeredHeroAlphaBase = Join-Path $assetRoot "states/_quicktext-registered-he
 [KiraClientImageTools]::SaveAlignedContentCrop($sourceAllstate, $registeredHeroAlphaBase, $registeredStateSourceX, $registeredStateSourceY, $allstatePanelWidth, $allstatePanelHeight, 1024, 1536, 820, 820, 512, 760, $true, 120, 18, 36)
 
 $quickTextStates = @(
-  @{ File = "quicktext-missing.png"; Hero = "missing-hero.png"; HeroAlpha = "missing-hero-alpha.png"; Brand = ""; R = 70; G = 214; B = 255; Glow = 0.12; Metal = 0.03; Brightness = 0.84 },
-  @{ File = "quicktext-installing.png"; Hero = "install-hero.png"; HeroAlpha = "install-hero-alpha.png"; Brand = "sidebar.png"; R = 40; G = 211; B = 255; Glow = 0.62; Metal = 0.08; Brightness = 1.08 },
-  @{ File = "quicktext-installed.png"; Hero = "success-hero.png"; HeroAlpha = "success-hero-alpha.png"; Brand = ""; R = 80; G = 245; B = 74; Glow = 0.78; Metal = 0.1; Brightness = 1.1 },
-  @{ File = "quicktext-update.png"; Hero = "update-hero.png"; HeroAlpha = "update-hero-alpha.png"; Brand = ""; R = 255; G = 190; B = 42; Glow = 0.72; Metal = 0.08; Brightness = 1.06 },
-  @{ File = "quicktext-removing.png"; Hero = "uninstall-hero.png"; HeroAlpha = "uninstall-hero-alpha.png"; Brand = "uninstaller-sidebar.png"; R = 255; G = 106; B = 45; Glow = 0.76; Metal = 0.09; Brightness = 1.03 },
-  @{ File = "quicktext-error.png"; Hero = "error-hero.png"; HeroAlpha = "error-hero-alpha.png"; Brand = ""; R = 255; G = 56; B = 72; Glow = 0.88; Metal = 0.1; Brightness = 1.02 }
+  @{ File = "quicktext-missing.png"; Hero = "missing-hero.png"; HeroAlpha = "missing-hero-alpha.png"; Brand = ""; R = 84; G = 224; B = 255; Glow = 0.34; Metal = 0.07; Brightness = 1.16 },
+  @{ File = "quicktext-installing.png"; Hero = "install-hero.png"; HeroAlpha = "install-hero-alpha.png"; Brand = "sidebar.png"; R = 42; G = 220; B = 255; Glow = 0.88; Metal = 0.12; Brightness = 1.32 },
+  @{ File = "quicktext-installed.png"; Hero = "success-hero.png"; HeroAlpha = "success-hero-alpha.png"; Brand = ""; R = 88; G = 255; B = 76; Glow = 0.96; Metal = 0.14; Brightness = 1.38 },
+  @{ File = "quicktext-update.png"; Hero = "update-hero.png"; HeroAlpha = "update-hero-alpha.png"; Brand = ""; R = 255; G = 205; B = 50; Glow = 0.92; Metal = 0.12; Brightness = 1.34 },
+  @{ File = "quicktext-removing.png"; Hero = "uninstall-hero.png"; HeroAlpha = "uninstall-hero-alpha.png"; Brand = "uninstaller-sidebar.png"; R = 255; G = 126; B = 48; Glow = 0.94; Metal = 0.13; Brightness = 1.3 },
+  @{ File = "quicktext-error.png"; Hero = "error-hero.png"; HeroAlpha = "error-hero-alpha.png"; Brand = ""; R = 255; G = 64; B = 86; Glow = 1.02; Metal = 0.14; Brightness = 1.28 }
 )
 
 foreach ($state in $quickTextStates) {
